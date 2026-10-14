@@ -188,6 +188,8 @@ All parameters are automatable; parameter version hints set for future-proofing.
 
 ## 8. Milestones
 
+Status: 1–3 done.
+
 1. **Skeleton** — CMake + JUCE FetchContent, empty processor with buses (main + sidechain) and MIDI in,
    APVTS, generic editor, CI with pluginval.
 2. **Static EQ** — SVF + EqBand/EqEngine with Fixed-mode bands; unit tests for responses.

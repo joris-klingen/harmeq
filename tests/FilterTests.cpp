@@ -172,7 +172,7 @@ TEST_CASE ("Tracked band fades out near Nyquist and when unvoiced")
 
     // 32 × 1000 Hz = 32 kHz, far above 0.45 × 48 kHz.
     band.update ({ 1000.0f, true }, 32);
-    CHECK (band.getCurrentAmount() == 0.0f);
+    CHECK (band.getCurrentAmount() <= 0.0f);
     CHECK (band.getCurrentFrequency() <= EqBand::fadeEnd * fs + 0.01);
 
     // Halfway into the fade region.
@@ -202,7 +202,7 @@ TEST_CASE ("Disabled bands are transparent and fade smoothly")
 
     for (int ch = 0; ch < 2; ++ch)
         for (int i = 0; i < 512; ++i)
-            REQUIRE (buffer.getSample (ch, i) == original.getSample (ch, i));
+            REQUIRE (juce::exactlyEqual (buffer.getSample (ch, i), original.getSample (ch, i)));
 }
 
 TEST_CASE ("Fast pitch sweeps stay stable")

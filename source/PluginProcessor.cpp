@@ -17,7 +17,12 @@ HarmEQAudioProcessor::HarmEQAudioProcessor()
 {
     using namespace harmeq;
 
+    sourceParam = apvts.getRawParameterValue (ParamIDs::source);
+    glideParam = apvts.getRawParameterValue (ParamIDs::glide);
+    noPitchModeParam = apvts.getRawParameterValue (ParamIDs::noPitchMode);
     fallbackFreqParam = apvts.getRawParameterValue (ParamIDs::fallbackFreq);
+    pitchBendRangeParam = apvts.getRawParameterValue (ParamIDs::pitchBendRange);
+    transposeParam = apvts.getRawParameterValue (ParamIDs::transpose);
     outputGainParam = apvts.getRawParameterValue (ParamIDs::outputGain);
 
     for (int b = 0; b < numBands; ++b)
@@ -38,14 +43,24 @@ HarmEQAudioProcessor::HarmEQAudioProcessor()
 void HarmEQAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     engine.prepare (sampleRate);
+    pitchTracker.prepare (sampleRate);
 
     outputGain.reset (sampleRate, 0.02);
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputGainParam->load()));
 }
 
-void HarmEQAudioProcessor::updateBandSettings()
+void HarmEQAudioProcessor::updateSettings()
 {
     using namespace harmeq;
+
+    PitchTracker::Settings ps;
+    ps.source = static_cast<PitchSource> ((int) sourceParam->load());
+    ps.noPitchMode = static_cast<NoPitchMode> ((int) noPitchModeParam->load());
+    ps.glideMs = glideParam->load();
+    ps.fallbackHz = fallbackFreqParam->load();
+    ps.pitchBendRange = pitchBendRangeParam->load();
+    ps.transpose = transposeParam->load();
+    pitchTracker.setSettings (ps);
 
     for (int b = 0; b < numBands; ++b)
     {
@@ -91,12 +106,36 @@ bool HarmEQAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) c
 void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
-    juce::ignoreUnused (midi);
 
     auto mainBuffer = getBusBuffer (buffer, false, 0);
+    const int numSamples = mainBuffer.getNumSamples();
 
-    updateBandSettings();
-    engine.process (mainBuffer, 0, mainBuffer.getNumSamples(), { fallbackFreqParam->load(), true });
+    updateSettings();
+
+    // Split the block at MIDI events (and into engine-sized chunks) so note changes are sample-accurate.
+    auto event = midi.cbegin();
+    harmeq::PitchState pitch;
+
+    for (int pos = 0; pos < numSamples;)
+    {
+        for (; event != midi.cend() && (*event).samplePosition <= pos; ++event)
+            pitchTracker.handleMidi ((*event).getMessage());
+
+        int end = std::min (numSamples, pos + harmeq::EqEngine::maxChunkSize);
+        if (event != midi.cend())
+            end = std::min (end, (*event).samplePosition);
+
+        pitch = pitchTracker.advance (end - pos);
+        engine.process (mainBuffer, pos, end - pos, pitch);
+        pos = end;
+    }
+
+    // Events stamped at or past the block end still belong to this block.
+    for (; event != midi.cend(); ++event)
+        pitchTracker.handleMidi ((*event).getMessage());
+
+    if (numSamples > 0)
+        currentPitchHz.store (pitch.voiced ? pitch.f0Hz : 0.0f, std::memory_order_relaxed);
 
     applyOutputGain (mainBuffer);
 }

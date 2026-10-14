@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
 
 option(HARMEQ_BUILD_TESTS "Build unit tests" ON)
+option(HARMEQ_COPY_PLUGIN "Install the built plugins into the system plugin folders" OFF)
 
 include(FetchContent)
 
@@ -29,7 +30,7 @@ juce_add_plugin(HarmEQ
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD FALSE
+    COPY_PLUGIN_AFTER_BUILD ${HARMEQ_COPY_PLUGIN}
     VST3_CATEGORIES Fx EQ
     AU_MAIN_TYPE kAudioUnitType_MusicEffect)
 
@@ -39,7 +40,8 @@ target_sources(HarmEQ
         source/PluginEditor.cpp
         source/Parameters.cpp
         source/dsp/EqBand.cpp
-        source/dsp/EqEngine.cpp)
+        source/dsp/EqEngine.cpp
+        source/dsp/PitchTracker.cpp)
 
 target_include_directories(HarmEQ PUBLIC source)
 

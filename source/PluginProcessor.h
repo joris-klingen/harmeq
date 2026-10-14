@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "dsp/EqEngine.h"
+#include "dsp/PitchTracker.h"
 
 class HarmEQAudioProcessor final : public juce::AudioProcessor
 {
@@ -41,6 +42,9 @@ public:
 
     static BusesProperties createBusesProperties();
 
+    // Pitch the tracked bands are following (0 when they are bypassed). For the UI; updated per block.
+    float getCurrentPitchHz() const noexcept { return currentPitchHz.load (std::memory_order_relaxed); }
+
 private:
     struct BandParams
     {
@@ -55,16 +59,23 @@ private:
         std::atomic<float>* slope = nullptr;
     };
 
-    void updateBandSettings();
+    void updateSettings();
     void applyOutputGain (juce::AudioBuffer<float>&);
 
     juce::AudioProcessorValueTreeState apvts;
 
+    std::atomic<float>* sourceParam = nullptr;
+    std::atomic<float>* glideParam = nullptr;
+    std::atomic<float>* noPitchModeParam = nullptr;
     std::atomic<float>* fallbackFreqParam = nullptr;
+    std::atomic<float>* pitchBendRangeParam = nullptr;
+    std::atomic<float>* transposeParam = nullptr;
     std::atomic<float>* outputGainParam = nullptr;
     std::array<BandParams, harmeq::numBands> bandParams;
 
     harmeq::EqEngine engine;
+    harmeq::PitchTracker pitchTracker;
+    std::atomic<float> currentPitchHz { 0.0f };
     juce::SmoothedValue<float> outputGain;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HarmEQAudioProcessor)

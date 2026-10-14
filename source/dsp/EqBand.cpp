@@ -75,7 +75,7 @@ void EqBand::update (const PitchState& pitch, int numSamples)
         logQ += pa * (targetLogQ - logQ);
         amount += pa * (amountTarget - amount);
 
-        if (amountTarget == 0.0f && amount < 1.0e-4f && amount != 0.0f)
+        if (amountTarget <= 0.0f && amount > 0.0f && amount < 1.0e-4f)
         {
             // Fully faded out: clear filter memory so the band restarts cleanly when it comes back.
             amount = 0.0f;
