@@ -120,7 +120,7 @@ TEST_CASE ("24 dB/oct high pass gives a 4th-order Butterworth response")
     CHECK_THAT (toDb (band.magnitudeAt (10000.0)), WithinAbs (0.0, 0.01));
 }
 
-TEST_CASE ("Tracked band follows pitch × harmonic × detune")
+TEST_CASE ("Tracked band follows pitch * harmonic * detune")
 {
     EqBand band;
     BandSettings s;
