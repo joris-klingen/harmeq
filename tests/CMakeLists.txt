@@ -6,7 +6,8 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 add_executable(HarmEQTests
-    ProcessorTests.cpp)
+    ProcessorTests.cpp
+    FilterTests.cpp)
 
 target_link_libraries(HarmEQTests
     PRIVATE

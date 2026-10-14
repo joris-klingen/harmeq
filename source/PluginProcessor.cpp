@@ -15,13 +15,54 @@ HarmEQAudioProcessor::HarmEQAudioProcessor()
     : AudioProcessor (createBusesProperties()),
       apvts (*this, nullptr, "HarmEQ", harmeq::createParameterLayout())
 {
-    outputGainParam = apvts.getRawParameterValue (harmeq::ParamIDs::outputGain);
+    using namespace harmeq;
+
+    fallbackFreqParam = apvts.getRawParameterValue (ParamIDs::fallbackFreq);
+    outputGainParam = apvts.getRawParameterValue (ParamIDs::outputGain);
+
+    for (int b = 0; b < numBands; ++b)
+    {
+        auto& p = bandParams[(size_t) b];
+        p.on = apvts.getRawParameterValue (ParamIDs::band (b, "on"));
+        p.type = apvts.getRawParameterValue (ParamIDs::band (b, "type"));
+        p.track = apvts.getRawParameterValue (ParamIDs::band (b, "track"));
+        p.harmonic = apvts.getRawParameterValue (ParamIDs::band (b, "harmonic"));
+        p.detune = apvts.getRawParameterValue (ParamIDs::band (b, "detune"));
+        p.freq = apvts.getRawParameterValue (ParamIDs::band (b, "freq"));
+        p.gain = apvts.getRawParameterValue (ParamIDs::band (b, "gain"));
+        p.q = apvts.getRawParameterValue (ParamIDs::band (b, "q"));
+        p.slope = apvts.getRawParameterValue (ParamIDs::band (b, "slope"));
+    }
 }
 
 void HarmEQAudioProcessor::prepareToPlay (double sampleRate, int)
 {
+    engine.prepare (sampleRate);
+
     outputGain.reset (sampleRate, 0.02);
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputGainParam->load()));
+}
+
+void HarmEQAudioProcessor::updateBandSettings()
+{
+    using namespace harmeq;
+
+    for (int b = 0; b < numBands; ++b)
+    {
+        const auto& p = bandParams[(size_t) b];
+
+        BandSettings s;
+        s.on = p.on->load() > 0.5f;
+        s.type = static_cast<FilterType> ((int) p.type->load());
+        s.track = static_cast<TrackMode> ((int) p.track->load());
+        s.harmonic = p.harmonic->load();
+        s.detuneCents = p.detune->load();
+        s.freqHz = p.freq->load();
+        s.gainDb = p.gain->load();
+        s.q = p.q->load();
+        s.steep = p.slope->load() > 0.5f;
+        engine.setBandSettings (b, s);
+    }
 }
 
 bool HarmEQAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -54,6 +95,14 @@ void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     auto mainBuffer = getBusBuffer (buffer, false, 0);
 
+    updateBandSettings();
+    engine.process (mainBuffer, 0, mainBuffer.getNumSamples(), { fallbackFreqParam->load(), true });
+
+    applyOutputGain (mainBuffer);
+}
+
+void HarmEQAudioProcessor::applyOutputGain (juce::AudioBuffer<float>& mainBuffer)
+{
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (outputGainParam->load()));
 
     if (outputGain.isSmoothing())

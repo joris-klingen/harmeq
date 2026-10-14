@@ -37,7 +37,9 @@ target_sources(HarmEQ
     PRIVATE
         source/PluginProcessor.cpp
         source/PluginEditor.cpp
-        source/Parameters.cpp)
+        source/Parameters.cpp
+        source/dsp/EqBand.cpp
+        source/dsp/EqEngine.cpp)
 
 target_include_directories(HarmEQ PUBLIC source)
 
