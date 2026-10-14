@@ -8,7 +8,8 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(HarmEQTests
     ProcessorTests.cpp
     FilterTests.cpp
-    PitchTrackingTests.cpp)
+    PitchTrackingTests.cpp
+    EditorTests.cpp)
 
 target_link_libraries(HarmEQTests
     PRIVATE

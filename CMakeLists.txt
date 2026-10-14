@@ -41,7 +41,13 @@ target_sources(HarmEQ
         source/Parameters.cpp
         source/dsp/EqBand.cpp
         source/dsp/EqEngine.cpp
-        source/dsp/PitchTracker.cpp)
+        source/dsp/PitchTracker.cpp
+        source/gui/BandStrip.cpp
+        source/gui/Controls.cpp
+        source/gui/HeaderBars.cpp
+        source/gui/LookAndFeel.cpp
+        source/gui/ResponseDisplay.cpp
+        source/gui/SpectrumAnalyzer.cpp)
 
 target_include_directories(HarmEQ PUBLIC source)
 
@@ -63,4 +69,8 @@ target_link_libraries(HarmEQ
 if(HARMEQ_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+
+    # Renders the editor to a PNG (for reviewing the GUI without a host).
+    add_executable(HarmEQScreenshot tools/Screenshot.cpp)
+    target_link_libraries(HarmEQScreenshot PRIVATE HarmEQ juce::juce_audio_utils juce::juce_dsp)
 endif()

@@ -63,21 +63,25 @@ void HarmEQAudioProcessor::updateSettings()
     pitchTracker.setSettings (ps);
 
     for (int b = 0; b < numBands; ++b)
-    {
-        const auto& p = bandParams[(size_t) b];
+        engine.setBandSettings (b, getBandSettings (b));
+}
 
-        BandSettings s;
-        s.on = p.on->load() > 0.5f;
-        s.type = static_cast<FilterType> ((int) p.type->load());
-        s.track = static_cast<TrackMode> ((int) p.track->load());
-        s.harmonic = p.harmonic->load();
-        s.detuneCents = p.detune->load();
-        s.freqHz = p.freq->load();
-        s.gainDb = p.gain->load();
-        s.q = p.q->load();
-        s.steep = p.slope->load() > 0.5f;
-        engine.setBandSettings (b, s);
-    }
+harmeq::BandSettings HarmEQAudioProcessor::getBandSettings (int band) const noexcept
+{
+    using namespace harmeq;
+    const auto& p = bandParams[(size_t) band];
+
+    BandSettings s;
+    s.on = p.on->load() > 0.5f;
+    s.type = static_cast<FilterType> ((int) p.type->load());
+    s.track = static_cast<TrackMode> ((int) p.track->load());
+    s.harmonic = p.harmonic->load();
+    s.detuneCents = p.detune->load();
+    s.freqHz = p.freq->load();
+    s.gainDb = p.gain->load();
+    s.q = p.q->load();
+    s.steep = p.slope->load() > 0.5f;
+    return s;
 }
 
 bool HarmEQAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -112,6 +116,13 @@ void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     updateSettings();
 
+    sidechainConnected.store (getBusCount (true) > 1 && getBusBuffer (buffer, true, 1).getNumChannels() > 0,
+                              std::memory_order_relaxed);
+
+    const bool feedAnalyzer = analyzerActive.load (std::memory_order_relaxed);
+    if (feedAnalyzer)
+        preTap.push (mainBuffer);
+
     // Split the block at MIDI events (and into engine-sized chunks) so note changes are sample-accurate.
     auto event = midi.cbegin();
     harmeq::PitchState pitch;
@@ -135,9 +146,15 @@ void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         pitchTracker.handleMidi ((*event).getMessage());
 
     if (numSamples > 0)
-        currentPitchHz.store (pitch.voiced ? pitch.f0Hz : 0.0f, std::memory_order_relaxed);
+    {
+        displayPitchHz.store (pitch.f0Hz, std::memory_order_relaxed);
+        displayVoiced.store (pitch.voiced, std::memory_order_relaxed);
+    }
 
     applyOutputGain (mainBuffer);
+
+    if (feedAnalyzer)
+        postTap.push (mainBuffer);
 }
 
 void HarmEQAudioProcessor::applyOutputGain (juce::AudioBuffer<float>& mainBuffer)

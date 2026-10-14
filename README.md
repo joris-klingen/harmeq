@@ -29,16 +29,39 @@ sudo apt-get install libasound2-dev libfreetype-dev libfontconfig1-dev libx11-de
 
 ## Current status
 
-Milestones 1–3 of the plan are done: the EQ bands work, and tracked bands follow **MIDI**. Audio pitch
-detection (Main Input / Sidechain sources) is not implemented yet — with those sources selected, tracked
-bands behave as if no note is playing (see *No-Pitch Mode*).
+![HarmEQ](docs/screenshot.png)
+
+Done: the EQ bands, MIDI pitch tracking, and the GUI with its spectrum analyzer. Audio pitch detection
+(Main Input / Sidechain sources) is not implemented yet. With those sources selected, tracked bands
+behave as if no note is playing (see *No pitch*).
+
+## Using the GUI
+
+The display shows the combined EQ curve (white), each band's curve in its colour, and lines at the
+first 8 harmonics of the current pitch. The note readout uses Ableton's octave numbering (MIDI 60 = C3).
+
+| On the display | Does |
+|---|---|
+| Drag a node left/right | Tracked band: moves between harmonics (¼, ½, 1…32). Fixed band: sets Hz |
+| Shift + drag left/right | Tracked band: fine detune (±100 ct). Fixed band: fine Hz |
+| Drag up/down | Gain (bell and shelves) |
+| Mouse wheel on a node | Q |
+| Double-click a node | Band on/off |
+| Double-click empty space | Turns on the next free band at that harmonic |
+| Right-click a node | Curve, Track pitch, slope, on/off, reset |
+
+Knobs and value boxes drag up/down (Shift for fine) and reset on double-click. Window size, display range
+and analyzer mode are saved with the project.
+
+`build/HarmEQScreenshot out.png` renders the editor with example settings and a held MIDI note, which
+is handy for checking GUI changes without a host.
 
 ## Trying it in Ableton Live
 
 1. Build with `-DHARMEQ_COPY_PLUGIN=ON` (or copy `HarmEQ.vst3` / `HarmEQ.component` by hand), then in Live
    open *Settings → Plug-Ins*, make sure VST3 and/or Audio Units are enabled and click *Rescan*.
 2. Put **HarmEQ** on an audio track with a sustained sound (a pad, drone, or noise works well for hearing it).
-3. Open the plugin window and set **Pitch Source = MIDI**.
+3. Open the plugin window and set **Source** to **MIDI**.
 4. Make a band audible — the defaults are flat (0 dB). For example Band 1: Gain **+12 dB**, Q **10**,
    Harmonic **2**. Turn Glide up to taste.
 5. Create a MIDI track. In its *MIDI To* dropdown choose the audio track, and in the second dropdown choose

@@ -48,14 +48,15 @@ struct SvfCoefficients
         return c;
     }
 
-    // Exact magnitude response at freqHz. The TPT SVF equals the bilinear transform of the analogue
+    // Exact frequency response at freqHz. The TPT SVF equals the bilinear transform of the analogue
     // prototype, so evaluate H(s) = m0 + (m1 s + m2) / (s^2 + k s + 1) at s = j tan(pi f / fs) / g.
-    double magnitude (double freqHz, double sampleRate) const
+    std::complex<double> response (double freqHz, double sampleRate) const
     {
         const std::complex<double> s { 0.0, std::tan (std::numbers::pi * freqHz / sampleRate) / g };
-        const auto h = (double) m0 + ((double) m1 * s + (double) m2) / (s * s + k * s + 1.0);
-        return std::abs (h);
+        return (double) m0 + ((double) m1 * s + (double) m2) / (s * s + k * s + 1.0);
     }
+
+    double magnitude (double freqHz, double sampleRate) const { return std::abs (response (freqHz, sampleRate)); }
 };
 
 struct SvfState

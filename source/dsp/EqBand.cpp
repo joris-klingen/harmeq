@@ -36,27 +36,79 @@ void EqBand::reset()
     snapToTargets = true;
 }
 
-void EqBand::update (const PitchState& pitch, int numSamples)
+BandTarget EqBand::resolveTarget (const BandSettings& s, const PitchState& pitch, double sampleRate)
 {
-    double freq;
-    float pitchAmount = 1.0f;
+    BandTarget t;
 
-    if (settings.track == TrackMode::tracked)
+    if (s.track == TrackMode::tracked)
     {
-        freq = (double) pitch.f0Hz * settings.harmonic * std::exp2 (settings.detuneCents / 1200.0);
-
+        const double freq = (double) pitch.f0Hz * s.harmonic * std::exp2 (s.detuneCents / 1200.0);
         const double fadePos = (freq / sampleRate - fadeStart) / (fadeEnd - fadeStart);
-        pitchAmount = pitch.voiced ? (float) std::clamp (1.0 - fadePos, 0.0, 1.0) : 0.0f;
-        freq = std::clamp (freq, 10.0, fadeEnd * sampleRate);
+        t.amount = pitch.voiced ? (float) std::clamp (1.0 - fadePos, 0.0, 1.0) : 0.0f;
+        t.freqHz = std::clamp (freq, 10.0, fadeEnd * sampleRate);
     }
     else
     {
-        freq = std::clamp ((double) settings.freqHz, 10.0, 0.49 * sampleRate);
+        t.amount = 1.0f;
+        t.freqHz = std::clamp ((double) s.freqHz, 10.0, 0.49 * sampleRate);
     }
 
-    const auto targetLogFreq = (float) std::log2 (freq);
+    if (! s.on)
+        t.amount = 0.0f;
+
+    return t;
+}
+
+BandDesign EqBand::settledDesign (const BandSettings& s, const PitchState& pitch, double sampleRate)
+{
+    const auto t = resolveTarget (s, pitch, sampleRate);
+    return BandDesign::make (s, t.freqHz, std::max (s.q, 0.01f), s.gainDb, t.amount, sampleRate);
+}
+
+BandDesign BandDesign::make (const BandSettings& s, double f, double q, double gainDb, float amount,
+                             double sampleRate)
+{
+    BandDesign d;
+
+    if (usesGain (s.type))
+    {
+        // Fading a gain-type band = scaling its gain in dB, which never introduces phase cancellation.
+        d.coeffs[0] = SvfCoefficients::design (s.type, f, q, gainDb * amount, sampleRate);
+        return d;
+    }
+
+    d.wet = amount;
+
+    if (isPassFilter (s.type) && s.steep)
+    {
+        d.numStages = 2;
+        d.coeffs[0] = SvfCoefficients::design (s.type, f, butterworthQ1, 0.0, sampleRate);
+        d.coeffs[1] = SvfCoefficients::design (s.type, f, q * butterworthQ2 / butterworthQ, 0.0, sampleRate);
+    }
+    else
+    {
+        d.coeffs[0] = SvfCoefficients::design (s.type, f, q, 0.0, sampleRate);
+    }
+
+    return d;
+}
+
+std::complex<double> BandDesign::response (double freqHz, double sampleRate) const
+{
+    auto h = coeffs[0].response (freqHz, sampleRate);
+
+    if (numStages > 1)
+        h *= coeffs[1].response (freqHz, sampleRate);
+
+    return (1.0 - wet) + (double) wet * h;
+}
+
+void EqBand::update (const PitchState& pitch, int numSamples)
+{
+    const auto target = resolveTarget (settings, pitch, sampleRate);
+    const auto targetLogFreq = (float) std::log2 (target.freqHz);
     const auto targetLogQ = std::log2 (std::max (settings.q, 0.01f));
-    amountTarget = settings.on ? pitchAmount : 0.0f;
+    amountTarget = target.amount;
 
     if (snapToTargets)
     {
@@ -85,26 +137,8 @@ void EqBand::update (const PitchState& pitch, int numSamples)
         }
     }
 
-    const double f = std::exp2 ((double) logFreq);
-    const double q = std::exp2 ((double) logQ);
-
-    if (usesGain (settings.type))
-    {
-        // Fading a gain-type band = scaling its gain in dB, which never introduces phase cancellation.
-        numStages = 1;
-        coeffs[0] = SvfCoefficients::design (settings.type, f, q, gainDb * amount, sampleRate);
-    }
-    else if (isPassFilter (settings.type) && settings.steep)
-    {
-        numStages = 2;
-        coeffs[0] = SvfCoefficients::design (settings.type, f, butterworthQ1, 0.0, sampleRate);
-        coeffs[1] = SvfCoefficients::design (settings.type, f, q * butterworthQ2 / butterworthQ, 0.0, sampleRate);
-    }
-    else
-    {
-        numStages = 1;
-        coeffs[0] = SvfCoefficients::design (settings.type, f, q, 0.0, sampleRate);
-    }
+    design = BandDesign::make (settings, std::exp2 ((double) logFreq), std::exp2 ((double) logQ), gainDb, amount,
+                               sampleRate);
 }
 
 void EqBand::process (float* const* channels, int numChannels, int startSample, int numSamples) noexcept
@@ -112,8 +146,11 @@ void EqBand::process (float* const* channels, int numChannels, int startSample, 
     if (! isActive())
         return;
 
-    // Gain-type bands already fold `amount` into their gain; the others crossfade against the dry signal.
-    const bool crossfade = ! usesGain (settings.type) && amount < 0.9999f;
+    const bool crossfade = design.wet < 0.9999f;
+    const float wet = design.wet;
+    const auto& c0 = design.coeffs[0];
+    const auto& c1 = design.coeffs[1];
+    const bool twoStages = design.numStages > 1;
     numChannels = std::min (numChannels, maxChannels);
 
     for (int ch = 0; ch < numChannels; ++ch)
@@ -124,12 +161,12 @@ void EqBand::process (float* const* channels, int numChannels, int startSample, 
         for (int i = 0; i < numSamples; ++i)
         {
             const float dry = data[i];
-            float y = st[0].process (dry, coeffs[0]);
+            float y = st[0].process (dry, c0);
 
-            if (numStages > 1)
-                y = st[1].process (y, coeffs[1]);
+            if (twoStages)
+                y = st[1].process (y, c1);
 
-            data[i] = crossfade ? dry + amount * (y - dry) : y;
+            data[i] = crossfade ? dry + wet * (y - dry) : y;
         }
     }
 }
@@ -139,14 +176,6 @@ double EqBand::magnitudeAt (double freqHz) const
     if (! isActive())
         return 1.0;
 
-    double m = coeffs[0].magnitude (freqHz, sampleRate);
-
-    if (numStages > 1)
-        m *= coeffs[1].magnitude (freqHz, sampleRate);
-
-    if (! usesGain (settings.type) && amount < 0.9999f)
-        return std::abs ((1.0 - amount) + amount * m); // approximate: ignores phase of the crossfade
-
-    return m;
+    return std::abs (design.response (freqHz, sampleRate));
 }
 } // namespace harmeq

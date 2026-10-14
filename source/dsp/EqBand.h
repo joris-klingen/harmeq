@@ -25,12 +25,38 @@ struct BandSettings
     bool steep = false; // 24 dB/oct for HP/LP
 };
 
+// Where a band should sit and how much of it applies (on/off × voiced × Nyquist fade), before smoothing.
+struct BandTarget
+{
+    double freqHz = 1000.0;
+    float amount = 0.0f;
+};
+
+// The filter a band runs for a given frequency, Q, gain and amount. The audio path and the response
+// display both build bands through this, so the drawn curve is exactly what is heard.
+struct BandDesign
+{
+    std::array<SvfCoefficients, 2> coeffs {};
+    int numStages = 1;
+    float wet = 1.0f; // < 1: crossfade against the dry signal (pass/notch types fading in or out)
+
+    static BandDesign make (const BandSettings& s, double freqHz, double q, double gainDb, float amount,
+                            double sampleRate);
+
+    std::complex<double> response (double freqHz, double sampleRate) const;
+};
+
 // One EQ band: resolves its target frequency from the pitch, smooths frequency/gain/Q/amount per chunk,
 // and runs one or two cascaded SVF stages per channel.
 class EqBand
 {
 public:
     static constexpr int maxChannels = 2;
+
+    static BandTarget resolveTarget (const BandSettings& s, const PitchState& pitch, double sampleRate);
+
+    // Response of a band with these settings once fully settled (what the display draws).
+    static BandDesign settledDesign (const BandSettings& s, const PitchState& pitch, double sampleRate);
 
     void prepare (double sampleRate);
     void reset();
@@ -45,7 +71,7 @@ public:
     float getCurrentFrequency() const noexcept { return std::exp2 (logFreq); }
     float getCurrentAmount() const noexcept { return amount; }
 
-    // Combined magnitude of the band's current state (for tests and the response display).
+    // Magnitude of the band's current (smoothed) state.
     double magnitudeAt (double freqHz) const;
 
     // Tracked bands fade out over this range (as a fraction of the sample rate) instead of
@@ -61,8 +87,7 @@ private:
 
     float logFreq = 10.0f, gainDb = 0.0f, logQ = 0.0f, amount = 0.0f, amountTarget = 0.0f;
 
-    int numStages = 1;
-    std::array<SvfCoefficients, 2> coeffs {};
+    BandDesign design;
     std::array<std::array<SvfState, 2>, maxChannels> state {};
 };
 } // namespace harmeq

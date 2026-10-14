@@ -190,7 +190,7 @@ All parameters are automatable; parameter version hints set for future-proofing.
 
 ## 8. Milestones
 
-Status: 1–3 done.
+Status: 1–3 and 6 done (GUI, including the spectrum analyzer). Next: 4, audio pitch detection.
 
 1. **Skeleton** — CMake + JUCE FetchContent, empty processor with buses (main + sidechain) and MIDI in,
    APVTS, generic editor, macOS CI with pluginval.

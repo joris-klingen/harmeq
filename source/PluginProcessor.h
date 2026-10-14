@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "dsp/EqEngine.h"
+#include "dsp/AnalyzerTap.h"
 #include "dsp/PitchTracker.h"
 
 class HarmEQAudioProcessor final : public juce::AudioProcessor
@@ -42,8 +43,34 @@ public:
 
     static BusesProperties createBusesProperties();
 
-    // Pitch the tracked bands are following (0 when they are bypassed). For the UI; updated per block.
-    float getCurrentPitchHz() const noexcept { return currentPitchHz.load (std::memory_order_relaxed); }
+    // ---- State for the editor (all safe to call from the message thread) ----
+
+    // Pitch the tracked bands are following (0 when they are bypassed); updated per block.
+    float getCurrentPitchHz() const noexcept
+    {
+        return displayVoiced.load (std::memory_order_relaxed) ? displayPitchHz.load (std::memory_order_relaxed) : 0.0f;
+    }
+
+    // Last pitch, plus whether tracked bands are currently active. Before audio has run this is the
+    // fallback pitch.
+    harmeq::PitchState getDisplayPitch() const noexcept
+    {
+        return { displayPitchHz.load (std::memory_order_relaxed), displayVoiced.load (std::memory_order_relaxed) };
+    }
+
+    // Detection confidence (0–1). Audio pitch detection is not implemented yet, so this is 0.
+    float getPitchConfidence() const noexcept { return 0.0f; }
+
+    bool isSidechainConnected() const noexcept { return sidechainConnected.load (std::memory_order_relaxed); }
+
+    harmeq::BandSettings getBandSettings (int band) const noexcept;
+
+    double getDisplaySampleRate() const noexcept { return getSampleRate() > 0.0 ? getSampleRate() : 48000.0; }
+
+    // The analyzer taps are only fed while an editor wants them.
+    void setAnalyzerActive (bool shouldBeActive) noexcept { analyzerActive.store (shouldBeActive); }
+    harmeq::AnalyzerTap& getPreTap() noexcept { return preTap; }
+    harmeq::AnalyzerTap& getPostTap() noexcept { return postTap; }
 
 private:
     struct BandParams
@@ -75,7 +102,12 @@ private:
 
     harmeq::EqEngine engine;
     harmeq::PitchTracker pitchTracker;
-    std::atomic<float> currentPitchHz { 0.0f };
+    std::atomic<float> displayPitchHz { 110.0f };
+    std::atomic<bool> displayVoiced { true };
+    std::atomic<bool> sidechainConnected { false };
+
+    std::atomic<bool> analyzerActive { false };
+    harmeq::AnalyzerTap preTap, postTap;
     juce::SmoothedValue<float> outputGain;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HarmEQAudioProcessor)
