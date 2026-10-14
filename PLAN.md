@@ -15,8 +15,8 @@ input, or incoming MIDI — and sit on a chosen harmonic of it.
 - Monophonic pitch detection (YIN or McLeod/MPM) with confidence gating and glide smoothing.
 - MIDI: monophonic last-note priority, pitch bend.
 - Response-curve display with harmonic markers and detected-note readout.
-- Platform: **macOS only** (universal arm64 + x86_64). Formats: VST3, AU, Standalone. CLAP optional via
-  `clap-juce-extensions`.
+- Platforms: **macOS** primary (universal arm64 + x86_64; VST3, AU, Standalone) and **Windows** (VST3),
+  kept building and validated in CI. CLAP optional via `clap-juce-extensions`.
 
 **Out of scope (v1)**: dynamic EQ, polyphonic tracking, linear-phase mode, M/S processing, spectrum-match.
 
@@ -30,7 +30,8 @@ input, or incoming MIDI — and sit on a chosen harmonic of it.
   `FORMATS VST3 AU Standalone`.
 - Unit tests: Catch2 (FetchContent), separate `HarmEQTests` target linking the DSP sources (DSP code is
   kept free of `AudioProcessor` so it is testable headless).
-- CI: GitHub Actions on macOS → universal build, unit tests, `auval`, **pluginval** at strictness 10 (VST3 + AU).
+- CI: GitHub Actions on macOS (universal build, unit tests, `auval`, **pluginval** at strictness 10 on VST3 + AU)
+  and Windows (build, unit tests, pluginval on VST3).
 
 ```
 harmeq/
@@ -179,7 +180,7 @@ All parameters are automatable; parameter version hints set for future-proofing.
 - Nyquist fade: harmonic × f0 above 0.45 fs → band contributes 0 dB.
 
 **Integration**
-- pluginval (strictness 10) and auval in CI on macOS.
+- pluginval (strictness 10) in CI on macOS and Windows; auval on macOS.
 - Manual host matrix (macOS): Ableton Live, Logic (AU + sidechain), Reaper, Bitwig — specifically check
   sidechain routing and MIDI routing into an audio effect, which differ per host.
 

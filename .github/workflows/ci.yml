@@ -51,3 +51,41 @@ jobs:
           path: |
             build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
             build/HarmEQ_artefacts/Release/AU/HarmEQ.component
+
+  windows:
+    name: Windows
+    runs-on: windows-2022
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-windows-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -S . -B build
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: pluginval
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+          unzip -q pluginval.zip
+          ./pluginval.exe --strictness-level 10 --validate-in-process build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
+
+      - name: Upload plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: HarmEQ-Windows
+          path: build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
