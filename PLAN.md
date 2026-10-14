@@ -15,7 +15,7 @@ input, or incoming MIDI — and sit on a chosen harmonic of it.
 - Monophonic pitch detection (YIN or McLeod/MPM) with confidence gating and glide smoothing.
 - MIDI: monophonic last-note priority, pitch bend.
 - Response-curve display with harmonic markers and detected-note readout.
-- Platforms: **macOS** primary (universal arm64 + x86_64; VST3, AU, Standalone) and **Windows** (VST3),
+- Platforms: **macOS** primary (universal arm64 + x86_64) and **Windows**. Formats: VST3 and Standalone (no AU),
   kept building and validated in CI. CLAP optional via `clap-juce-extensions`.
 
 **Out of scope (v1)**: dynamic EQ, polyphonic tracking, linear-phase mode, M/S processing, spectrum-match.
@@ -27,11 +27,11 @@ input, or incoming MIDI — and sit on a chosen harmonic of it.
 - **JUCE 8** pulled in with CMake `FetchContent` (pinned tag) — no Projucer.
 - C++20, CMake ≥ 3.22.
 - `juce_add_plugin(HarmEQ ...)` with `NEEDS_MIDI_INPUT TRUE`, `IS_SYNTH FALSE`, `IS_MIDI_EFFECT FALSE`,
-  `FORMATS VST3 AU Standalone`.
+  `FORMATS VST3 Standalone`.
 - Unit tests: Catch2 (FetchContent), separate `HarmEQTests` target linking the DSP sources (DSP code is
   kept free of `AudioProcessor` so it is testable headless).
-- CI: GitHub Actions on macOS (universal build, unit tests, `auval`, **pluginval** at strictness 10 on VST3 + AU)
-  and Windows (build, unit tests, pluginval on VST3).
+- CI: GitHub Actions on macOS (universal build) and Windows: build, unit tests, **pluginval** at strictness 10
+  on the VST3.
 
 ```
 harmeq/
@@ -180,8 +180,8 @@ All parameters are automatable; parameter version hints set for future-proofing.
 - Nyquist fade: harmonic × f0 above 0.45 fs → band contributes 0 dB.
 
 **Integration**
-- pluginval (strictness 10) in CI on macOS and Windows; auval on macOS.
-- Manual host matrix (macOS): Ableton Live, Logic (AU + sidechain), Reaper, Bitwig — specifically check
+- pluginval (strictness 10) in CI on macOS and Windows.
+- Manual host matrix (macOS): Ableton Live, Reaper, Bitwig — specifically check
   sidechain routing and MIDI routing into an audio effect, which differ per host.
 
 **Performance target**: < 2 % of one core at 48 kHz stereo, 8 bands, 40 Hz min freq.

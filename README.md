@@ -1,6 +1,6 @@
 # HarmEQ
 
-A pitch-tracking harmonic EQ plugin for macOS (VST3 / AU) and Windows (VST3) built with JUCE. EQ bands follow the
+A pitch-tracking harmonic EQ plugin (VST3, plus a Standalone app) for macOS and Windows, built with JUCE. EQ bands follow the
 fundamental of a monophonic note — detected from the main input, a sidechain, or taken from MIDI — and sit
 on a chosen harmonic of it. See [PLAN.md](PLAN.md) for the design and milestones.
 
@@ -15,8 +15,8 @@ ctest --test-dir build -C Release
 ```
 
 Plugins are written to `build/HarmEQ_artefacts/Release/`. Add `-DHARMEQ_COPY_PLUGIN=ON` to the configure
-step to also copy them into the system plugin folders (`~/Library/Audio/Plug-Ins/VST3` and `Components` on
-macOS, `C:\Program Files\Common Files\VST3` on Windows, which needs an elevated shell).
+step to also copy the VST3 into the system plugin folder (`~/Library/Audio/Plug-Ins/VST3` on macOS,
+`C:\Program Files\Common Files\VST3` on Windows, which needs an elevated shell).
 Add `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"` for a universal binary.
 
 macOS is the primary platform; Windows builds and passes validation in CI. The code also builds on Linux (used for development and tests) after
@@ -58,8 +58,8 @@ is handy for checking GUI changes without a host.
 
 ## Trying it in Ableton Live
 
-1. Build with `-DHARMEQ_COPY_PLUGIN=ON` (or copy `HarmEQ.vst3` / `HarmEQ.component` by hand), then in Live
-   open *Settings → Plug-Ins*, make sure VST3 and/or Audio Units are enabled and click *Rescan*.
+1. Build with `-DHARMEQ_COPY_PLUGIN=ON` (or copy `HarmEQ.vst3` by hand), then in Live open
+   *Settings → Plug-Ins*, make sure VST3 is enabled and click *Rescan*.
 2. Put **HarmEQ** on an audio track with a sustained sound (a pad, drone, or noise works well for hearing it).
 3. Open the plugin window and set **Source** to **MIDI**.
 4. Make a band audible — the defaults are flat (0 dB). For example Band 1: Gain **+12 dB**, Q **10**,

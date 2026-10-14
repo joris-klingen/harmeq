@@ -31,18 +31,12 @@ jobs:
       - name: Unit tests
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: auval
-        run: |
-          killall -9 AudioComponentRegistrar || true
-          auval -v aumf Hreq Jokl
-
       - name: pluginval
         run: |
           curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
           unzip -q pluginval.zip
-          for plugin in build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3 build/HarmEQ_artefacts/Release/AU/HarmEQ.component; do
-            ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process "$plugin"
-          done
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
+            build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
 
       - name: Upload plugins
         uses: actions/upload-artifact@v4
@@ -50,7 +44,7 @@ jobs:
           name: HarmEQ-macOS
           path: |
             build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
-            build/HarmEQ_artefacts/Release/AU/HarmEQ.component
+            build/HarmEQ_artefacts/Release/Standalone/HarmEQ.app
 
   windows:
     name: Windows
@@ -84,8 +78,10 @@ jobs:
           unzip -q pluginval.zip
           ./pluginval.exe --strictness-level 10 --validate-in-process build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
 
-      - name: Upload plugin
+      - name: Upload plugins
         uses: actions/upload-artifact@v4
         with:
           name: HarmEQ-Windows
-          path: build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
+          path: |
+            build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
+            build/HarmEQ_artefacts/Release/Standalone/HarmEQ.exe
