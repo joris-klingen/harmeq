@@ -1,5 +1,5 @@
 // Renders the editor to a PNG with example settings and live audio/MIDI, for reviewing the GUI
-// without a host:  HarmEQScreenshot out.png [scale]
+// without a host:  HarmEQScreenshot out.png [scale] [poly]
 #include "Parameters.h"
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
@@ -52,30 +52,38 @@ int main (int argc, char** argv)
     proc.prepareToPlay (fs, blockSize);
     exampleSettings (proc.getValueTreeState());
 
+    const bool poly = argc > 3 && juce::String (argv[3]) == "poly";
+    if (poly)
+        set (proc.getValueTreeState(), harmeq::ParamIDs::midiMode, (float) harmeq::MidiMode::poly);
+
     std::unique_ptr<juce::AudioProcessorEditor> base (proc.createEditor());
     auto* editor = dynamic_cast<HarmEQAudioProcessorEditor*> (base.get());
     editor->setSize (HarmEQAudioProcessorEditor::defaultWidth, HarmEQAudioProcessorEditor::defaultHeight);
 
-    // Two seconds of a band-limited-ish saw on G2 (MIDI 43), the note held via MIDI.
+    // Two seconds of band-limited saws held via MIDI: G1 (MIDI 43), or a C2–E2–G2 chord in poly.
     juce::AudioBuffer<float> buffer (2, blockSize);
     juce::MidiBuffer midi;
-    const int note = 43;
-    const double f0 = 440.0 * std::pow (2.0, (note - 69) / 12.0);
-    double phase = 0.0;
+    const std::vector<int> notes = poly ? std::vector<int> { 48, 52, 55 } : std::vector<int> { 43 };
+    std::vector<double> phases (notes.size(), 0.0);
 
     for (int block = 0; block < (int) (2.0 * fs) / blockSize; ++block)
     {
         midi.clear();
         if (block == 0)
-            midi.addEvent (juce::MidiMessage::noteOn (1, note, (juce::uint8) 100), 0);
+            for (int note : notes)
+                midi.addEvent (juce::MidiMessage::noteOn (1, note, (juce::uint8) 100), 0);
 
         for (int i = 0; i < blockSize; ++i)
         {
             float s = 0.0f;
-            for (int h = 1; h * f0 < 20000.0; ++h)
-                s += (float) (std::sin (2.0 * juce::MathConstants<double>::pi * h * phase) / h);
-            s *= 0.25f;
-            phase = std::fmod (phase + f0 / fs, 1.0);
+            for (size_t k = 0; k < notes.size(); ++k)
+            {
+                const double f0 = 440.0 * std::pow (2.0, (notes[k] - 69) / 12.0);
+                for (int h = 1; h * f0 < 20000.0; ++h)
+                    s += (float) (std::sin (2.0 * juce::MathConstants<double>::pi * h * phases[k]) / h);
+                phases[k] = std::fmod (phases[k] + f0 / fs, 1.0);
+            }
+            s *= 0.25f / (float) notes.size();
             buffer.setSample (0, i, s);
             buffer.setSample (1, i, s);
         }

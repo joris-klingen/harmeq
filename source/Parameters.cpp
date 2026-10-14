@@ -45,6 +45,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     global->addChild (
         std::make_unique<juce::AudioParameterChoice> (pid (ParamIDs::source), "Pitch Source",
                                                       juce::StringArray { "Main Input", "Sidechain", "MIDI" }, 0),
+        std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { ParamIDs::midiMode, 2 }, "MIDI Notes",
+                                                      juce::StringArray { "Last Note", "Lowest Note", "Poly" }, 0),
         std::make_unique<juce::AudioParameterFloat> (pid (ParamIDs::minFreq), "Min Pitch",
                                                      freqRange (30.0f, 2000.0f, 200.0f), 50.0f, hzAttributes()),
         std::make_unique<juce::AudioParameterFloat> (pid (ParamIDs::maxFreq), "Max Pitch",

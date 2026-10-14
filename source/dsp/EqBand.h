@@ -12,6 +12,18 @@ struct PitchState
     bool voiced = true; // false: tracked bands should fade out (No-Pitch Mode = Bypass Bands)
 };
 
+// One pitch per voice slot. Mono modes use slot 0 only; Poly fills a slot per held note.
+using PitchSet = std::array<PitchState, maxVoices>;
+
+// A single pitch in slot 0, other slots silent.
+inline PitchSet monoPitch (PitchState p) noexcept
+{
+    PitchSet set;
+    set.fill ({ p.f0Hz, false });
+    set[0] = p;
+    return set;
+}
+
 struct BandSettings
 {
     bool on = false;
@@ -69,6 +81,7 @@ public:
     void process (float* const* channels, int numChannels, int startSample, int numSamples) noexcept;
 
     float getCurrentFrequency() const noexcept { return std::exp2 (logFreq); }
+    bool isIdle() const noexcept { return ! isActive(); }
     float getCurrentAmount() const noexcept { return amount; }
 
     // Magnitude of the band's current (smoothed) state.

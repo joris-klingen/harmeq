@@ -35,10 +35,26 @@ Done: the EQ bands, MIDI pitch tracking, and the GUI with its spectrum analyzer.
 (Main Input / Sidechain sources) is not implemented yet. With those sources selected, tracked bands
 behave as if no note is playing (see *No pitch*).
 
+## MIDI note modes
+
+With **Source = MIDI**, **Notes** picks which notes the tracked bands follow:
+
+- **Last**: the most recently pressed note (glides between notes).
+- **Lowest**: the lowest held note, which is often what matters for low-end build-up.
+- **Poly**: every held note, up to 6 (a Juno-106 has six voices). Each tracked band gets a copy per
+  note, so a "notch on H1, cut H2" setup applies to every note of a chord. Fixed bands stay single.
+  - New notes fade in at their pitch; there is no glide between chords.
+  - *No pitch* = **Hold** keeps the last chord after you let go, until the next note, so ringing pad
+    releases stay treated. *Fallback* switches to the fallback pitch, *Bypass bands* fades them out.
+  - Harmonics shared between notes are merged: when two notes put bands of the same type within
+    20 cents of each other (e.g. C's 3rd and G's 2nd harmonic in a C major chord), only one applies, so a
+    −6 dB cut never becomes −12 dB just because of the chord.
+
 ## Using the GUI
 
 The display shows the combined EQ curve (white), each band's curve in its colour, and lines at the
-first 8 harmonics of the current pitch. The note readout uses Ableton's octave numbering (MIDI 60 = C3).
+first 8 harmonics of the current pitch (in Poly, of every held note, with the lowest labelled; nodes
+sit on the lowest note). The note readout uses Ableton's octave numbering (MIDI 60 = C3).
 
 | On the display | Does |
 |---|---|
@@ -53,8 +69,8 @@ first 8 harmonics of the current pitch. The note readout uses Ableton's octave n
 Knobs and value boxes drag up/down (Shift for fine) and reset on double-click. Window size, display range
 and analyzer mode are saved with the project.
 
-`build/HarmEQScreenshot out.png` renders the editor with example settings and a held MIDI note, which
-is handy for checking GUI changes without a host.
+`build/HarmEQScreenshot out.png [scale] [poly]` renders the editor with example settings and a held
+MIDI note (or a chord with `poly`), which is handy for checking GUI changes without a host.
 
 ## Trying it in Ableton Live
 

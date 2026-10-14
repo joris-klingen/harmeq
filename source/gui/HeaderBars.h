@@ -7,7 +7,7 @@ class HarmEQAudioProcessor;
 
 namespace harmeq
 {
-// Top bar: name, pitch source, pitch readout, output gain.
+// Top bar: name, pitch source, MIDI note mode, pitch readout, output gain.
 class TopBar final : public juce::Component
 {
 public:
@@ -20,13 +20,15 @@ public:
 
 private:
     HarmEQAudioProcessor& processor;
-    ParameterSegmented source;
+    ParameterSegmented source, notes;
     ValueBox outputGain;
     std::unique_ptr<SliderAttachment> outputAttachment;
 
-    juce::Rectangle<int> logoArea, sourceCaption, readoutArea, outCaption;
+    juce::Rectangle<int> logoArea, sourceCaption, notesCaption, readoutArea, outCaption;
 
     PitchState pitch;
+    PitchSet pitches = monoPitch ({});
+    bool poly = false;
     float confidence = 0.0f;
     PitchSource sourceMode = PitchSource::mainInput;
     bool sidechainConnected = true;

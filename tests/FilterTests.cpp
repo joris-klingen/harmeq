@@ -198,7 +198,7 @@ TEST_CASE ("Disabled bands are transparent and fade smoothly")
             buffer.setSample (ch, i, (float) std::sin (0.05 * i));
 
     juce::AudioBuffer<float> original (buffer);
-    engine.process (buffer, 0, 512, { 110.0f, true });
+    engine.process (buffer, 0, 512, monoPitch ({ 110.0f, true }));
 
     for (int ch = 0; ch < 2; ++ch)
         for (int i = 0; i < 512; ++i)
@@ -238,7 +238,7 @@ TEST_CASE ("Fast pitch sweeps stay stable")
             for (int i = 0; i < buffer.getNumSamples(); ++i)
                 buffer.setSample (ch, i, rng.nextFloat() * 0.2f - 0.1f);
 
-        engine.process (buffer, 0, buffer.getNumSamples(), { f0, true });
+        engine.process (buffer, 0, buffer.getNumSamples(), monoPitch ({ f0, true }));
 
         for (int ch = 0; ch < 2; ++ch)
             for (int i = 0; i < buffer.getNumSamples(); ++i)

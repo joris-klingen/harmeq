@@ -18,7 +18,7 @@ input, or incoming MIDI — and sit on a chosen harmonic of it.
 - Platforms: **macOS** primary (universal arm64 + x86_64) and **Windows**. Formats: VST3 and Standalone (no AU),
   kept building and validated in CI. CLAP optional via `clap-juce-extensions`.
 
-**Out of scope (v1)**: dynamic EQ, polyphonic tracking, linear-phase mode, M/S processing, spectrum-match.
+**Out of scope (v1)**: dynamic EQ, polyphonic audio detection (Poly works from MIDI only), linear-phase mode, M/S processing, spectrum-match.
 
 ---
 
@@ -190,7 +190,7 @@ All parameters are automatable; parameter version hints set for future-proofing.
 
 ## 8. Milestones
 
-Status: 1–3 and 6 done (GUI, including the spectrum analyzer). Next: 4, audio pitch detection.
+Status: 1–3 and 6 done (GUI, including the spectrum analyzer), plus MIDI Lowest Note and Poly modes (see README). Next: 4, audio pitch detection.
 
 1. **Skeleton** — CMake + JUCE FetchContent, empty processor with buses (main + sidechain) and MIDI in,
    APVTS, generic editor, macOS CI with pluginval.

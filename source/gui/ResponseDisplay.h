@@ -2,7 +2,7 @@
 
 #include "SpectrumAnalyzer.h"
 #include "Theme.h"
-#include "dsp/EqBand.h"
+#include "dsp/EqEngine.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -65,6 +65,8 @@ private:
     void drawGrid (juce::Graphics&);
     void drawAnalyzer (juce::Graphics&);
     void drawHarmonics (juce::Graphics&);
+    void drawHarmonicSeries (juce::Graphics&, const PitchState&, float alphaScale, bool labels);
+    bool isLive (int band) const;
     void drawCurves (juce::Graphics&);
     void drawNodes (juce::Graphics&);
     void drawTooltip (juce::Graphics&);
@@ -77,8 +79,10 @@ private:
     AnalyzerMode analyzerMode = AnalyzerMode::both;
 
     std::array<BandSettings, numBands> settings {};
-    std::array<float, numBands> shownAmount {};
-    PitchState pitch;
+    std::array<std::array<float, maxVoices>, numBands> shownAmount {}; // per band instance (voice slot)
+    PitchSet pitches = monoPitch ({});
+    PitchState pitch; // the one nodes follow: the lowest sounding note
+    bool poly = false;
     double sampleRate = 48000.0;
     float outputGainDb = 0.0f;
     bool curvesDirty = true;

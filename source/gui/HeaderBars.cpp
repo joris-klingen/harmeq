@@ -17,9 +17,12 @@ namespace
 
 TopBar::TopBar (HarmEQAudioProcessor& p)
     : processor (p),
-      source (*p.getValueTreeState().getParameter (ParamIDs::source), { "Main", "Sidechain", "MIDI" })
+      source (*p.getValueTreeState().getParameter (ParamIDs::source), { "Main", "Sidechain", "MIDI" }),
+      notes (*p.getValueTreeState().getParameter (ParamIDs::midiMode), { "Last", "Lowest", "Poly" })
 {
     addAndMakeVisible (source);
+    addAndMakeVisible (notes);
+    notes.setTooltip ("MIDI notes: follow the last or lowest held note, or every note of a chord (Poly)");
     outputAttachment = attach (p.getValueTreeState(), ParamIDs::outputGain, outputGain,
                                [] (double v) { return theme::formatDb (v); });
     outputGain.setTooltip ("Output gain");
@@ -34,13 +37,24 @@ void TopBar::refresh()
     const auto newSource = static_cast<PitchSource> (
         (int) processor.getValueTreeState().getRawParameterValue (ParamIDs::source)->load());
     const bool newSidechain = processor.isSidechainConnected();
+    const auto newPitches = processor.getDisplayPitches();
+    const bool newPoly = processor.isPolyActive();
 
-    if (juce::approximatelyEqual (newPitch.f0Hz, pitch.f0Hz) && newPitch.voiced == pitch.voiced
+    bool pitchesChanged = newPoly != poly;
+    for (size_t v = 0; v < newPitches.size() && ! pitchesChanged; ++v)
+        pitchesChanged = newPitches[v].voiced != pitches[v].voiced
+                         || (newPitches[v].voiced && ! juce::approximatelyEqual (newPitches[v].f0Hz, pitches[v].f0Hz));
+
+    notes.setEnabled (newSource == PitchSource::midi);
+
+    if (juce::approximatelyEqual (newPitch.f0Hz, pitch.f0Hz) && newPitch.voiced == pitch.voiced && ! pitchesChanged
         && juce::approximatelyEqual (newConfidence, confidence) && newSource == sourceMode
         && newSidechain == sidechainConnected)
         return;
 
     pitch = newPitch;
+    pitches = newPitches;
+    poly = newPoly;
     confidence = newConfidence;
     sourceMode = newSource;
     sidechainConnected = newSidechain;
@@ -55,6 +69,9 @@ void TopBar::resized()
     r.removeFromLeft (10);
     sourceCaption = r.removeFromLeft (50);
     source.setBounds (r.removeFromLeft (196).withSizeKeepingCentre (196, 26));
+    r.removeFromLeft (16);
+    notesCaption = r.removeFromLeft (46);
+    notes.setBounds (r.removeFromLeft (156).withSizeKeepingCentre (156, 26));
 
     auto right = r.removeFromRight (120);
     outCaption = right.removeFromLeft (32);
@@ -82,6 +99,8 @@ void TopBar::paint (juce::Graphics& g)
     }
 
     drawCaption (g, "Source", sourceCaption);
+    drawCaption (g, "Notes", notesCaption, juce::Justification::centredLeft,
+                 sourceMode == PitchSource::midi ? theme::muted : theme::faint);
     drawCaption (g, "Out", outCaption);
 
     // Readout, right-aligned in the space between source and output: [warning] note cents Hz [meter|MIDI]
@@ -108,7 +127,24 @@ void TopBar::paint (juce::Graphics& g)
     r.removeFromRight (12);
     g.setFont (theme::numbers (12.0f));
 
-    if (pitch.voiced)
+    if (poly && pitch.voiced)
+    {
+        // Poly: the chord, lowest note first.
+        juce::Array<float> hz;
+        for (const auto& p : pitches)
+            if (p.voiced)
+                hz.add (p.f0Hz);
+        hz.sort();
+
+        juce::StringArray names;
+        for (float f : hz)
+            names.add (theme::noteName (f));
+
+        g.setColour (theme::text);
+        g.setFont (theme::numbers (16.0f));
+        g.drawFittedText (names.joinIntoString (" "), r, juce::Justification::centredRight, 1, 0.7f);
+    }
+    else if (pitch.voiced)
     {
         int cents = 0;
         const auto note = theme::noteName (pitch.f0Hz, &cents);

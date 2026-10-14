@@ -49,6 +49,19 @@ public:
 
     bool hasNote() const noexcept { return size > 0; }
     int currentNote() const noexcept { return size > 0 ? stack[(size_t) size - 1] : -1; }
+
+    int lowestNote() const noexcept
+    {
+        int lowest = -1;
+        for (int i = 0; i < size; ++i)
+            if (lowest < 0 || stack[(size_t) i] < lowest)
+                lowest = stack[(size_t) i];
+        return lowest;
+    }
+
+    // Held notes in the order they were pressed (oldest first).
+    int numHeld() const noexcept { return size; }
+    int heldNote (int index) const noexcept { return stack[(size_t) index]; }
     float pitchBend() const noexcept { return bend; } // -1 … +1
 
 private:

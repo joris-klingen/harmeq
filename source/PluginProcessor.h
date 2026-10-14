@@ -45,18 +45,22 @@ public:
 
     // ---- State for the editor (all safe to call from the message thread) ----
 
-    // Pitch the tracked bands are following (0 when they are bypassed); updated per block.
+    // Pitch the tracked bands are following (the lowest sounding note in Poly; 0 when they are
+    // bypassed); updated per block.
     float getCurrentPitchHz() const noexcept
     {
-        return displayVoiced.load (std::memory_order_relaxed) ? displayPitchHz.load (std::memory_order_relaxed) : 0.0f;
+        const auto p = getDisplayPitch();
+        return p.voiced ? p.f0Hz : 0.0f;
     }
 
-    // Last pitch, plus whether tracked bands are currently active. Before audio has run this is the
-    // fallback pitch.
-    harmeq::PitchState getDisplayPitch() const noexcept
-    {
-        return { displayPitchHz.load (std::memory_order_relaxed), displayVoiced.load (std::memory_order_relaxed) };
-    }
+    // Per voice slot: last pitch and whether it is sounding. Mono modes use slot 0 only. Before audio
+    // has run, slot 0 holds the fallback pitch.
+    harmeq::PitchSet getDisplayPitches() const noexcept;
+
+    // The pitch the display's nodes and labels follow: the lowest sounding slot, else slot 0.
+    harmeq::PitchState getDisplayPitch() const noexcept;
+
+    bool isPolyActive() const noexcept { return polyActive.load (std::memory_order_relaxed); }
 
     // Detection confidence (0–1). Audio pitch detection is not implemented yet, so this is 0.
     float getPitchConfidence() const noexcept { return 0.0f; }
@@ -92,6 +96,7 @@ private:
     juce::AudioProcessorValueTreeState apvts;
 
     std::atomic<float>* sourceParam = nullptr;
+    std::atomic<float>* midiModeParam = nullptr;
     std::atomic<float>* glideParam = nullptr;
     std::atomic<float>* noPitchModeParam = nullptr;
     std::atomic<float>* fallbackFreqParam = nullptr;
@@ -102,8 +107,9 @@ private:
 
     harmeq::EqEngine engine;
     harmeq::PitchTracker pitchTracker;
-    std::atomic<float> displayPitchHz { 110.0f };
-    std::atomic<bool> displayVoiced { true };
+    std::array<std::atomic<float>, harmeq::maxVoices> displayPitchHz;
+    std::array<std::atomic<bool>, harmeq::maxVoices> displayVoiced;
+    std::atomic<bool> polyActive { false };
     std::atomic<bool> sidechainConnected { false };
 
     std::atomic<bool> analyzerActive { false };

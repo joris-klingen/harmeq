@@ -18,6 +18,13 @@ HarmEQAudioProcessor::HarmEQAudioProcessor()
     using namespace harmeq;
 
     sourceParam = apvts.getRawParameterValue (ParamIDs::source);
+    midiModeParam = apvts.getRawParameterValue (ParamIDs::midiMode);
+
+    for (int v = 0; v < maxVoices; ++v)
+    {
+        displayPitchHz[(size_t) v].store (110.0f);
+        displayVoiced[(size_t) v].store (v == 0);
+    }
     glideParam = apvts.getRawParameterValue (ParamIDs::glide);
     noPitchModeParam = apvts.getRawParameterValue (ParamIDs::noPitchMode);
     fallbackFreqParam = apvts.getRawParameterValue (ParamIDs::fallbackFreq);
@@ -55,6 +62,7 @@ void HarmEQAudioProcessor::updateSettings()
 
     PitchTracker::Settings ps;
     ps.source = static_cast<PitchSource> ((int) sourceParam->load());
+    ps.midiMode = static_cast<MidiMode> ((int) midiModeParam->load());
     ps.noPitchMode = static_cast<NoPitchMode> ((int) noPitchModeParam->load());
     ps.glideMs = glideParam->load();
     ps.fallbackHz = fallbackFreqParam->load();
@@ -64,6 +72,26 @@ void HarmEQAudioProcessor::updateSettings()
 
     for (int b = 0; b < numBands; ++b)
         engine.setBandSettings (b, getBandSettings (b));
+}
+
+harmeq::PitchSet HarmEQAudioProcessor::getDisplayPitches() const noexcept
+{
+    harmeq::PitchSet set;
+    for (size_t v = 0; v < set.size(); ++v)
+        set[v] = { displayPitchHz[v].load (std::memory_order_relaxed), displayVoiced[v].load (std::memory_order_relaxed) };
+    return set;
+}
+
+harmeq::PitchState HarmEQAudioProcessor::getDisplayPitch() const noexcept
+{
+    const auto set = getDisplayPitches();
+    const harmeq::PitchState* lowest = nullptr;
+
+    for (const auto& p : set)
+        if (p.voiced && (lowest == nullptr || p.f0Hz < lowest->f0Hz))
+            lowest = &p;
+
+    return lowest != nullptr ? *lowest : harmeq::PitchState { set[0].f0Hz, false };
 }
 
 harmeq::BandSettings HarmEQAudioProcessor::getBandSettings (int band) const noexcept
@@ -125,7 +153,7 @@ void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     // Split the block at MIDI events (and into engine-sized chunks) so note changes are sample-accurate.
     auto event = midi.cbegin();
-    harmeq::PitchState pitch;
+    harmeq::PitchSet pitches;
 
     for (int pos = 0; pos < numSamples;)
     {
@@ -136,8 +164,8 @@ void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         if (event != midi.cend())
             end = std::min (end, (*event).samplePosition);
 
-        pitch = pitchTracker.advance (end - pos);
-        engine.process (mainBuffer, pos, end - pos, pitch);
+        pitches = pitchTracker.advance (end - pos);
+        engine.process (mainBuffer, pos, end - pos, pitches);
         pos = end;
     }
 
@@ -147,8 +175,12 @@ void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     if (numSamples > 0)
     {
-        displayPitchHz.store (pitch.f0Hz, std::memory_order_relaxed);
-        displayVoiced.store (pitch.voiced, std::memory_order_relaxed);
+        for (size_t v = 0; v < pitches.size(); ++v)
+        {
+            displayPitchHz[v].store (pitches[v].f0Hz, std::memory_order_relaxed);
+            displayVoiced[v].store (pitches[v].voiced, std::memory_order_relaxed);
+        }
+        polyActive.store (pitchTracker.isPoly(), std::memory_order_relaxed);
     }
 
     applyOutputGain (mainBuffer);

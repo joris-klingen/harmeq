@@ -152,12 +152,23 @@ void ResponseDisplay::refresh()
         }
     }
 
-    const auto newPitch = processor.getDisplayPitch();
-    if (! juce::approximatelyEqual (newPitch.f0Hz, pitch.f0Hz) || newPitch.voiced != pitch.voiced)
+    const auto newPitches = processor.getDisplayPitches();
+    const bool newPoly = processor.isPolyActive();
+    for (size_t v = 0; v < newPitches.size(); ++v)
     {
-        pitch = newPitch;
+        if (! juce::approximatelyEqual (newPitches[v].f0Hz, pitches[v].f0Hz) || newPitches[v].voiced != pitches[v].voiced)
+        {
+            pitches = newPitches;
+            changed = true;
+            break;
+        }
+    }
+    if (newPoly != poly)
+    {
+        poly = newPoly;
         changed = true;
     }
+    pitch = processor.getDisplayPitch();
 
     const auto newRate = processor.getDisplaySampleRate();
     const auto newOut = apvts.getRawParameterValue (ParamIDs::outputGain)->load();
@@ -168,17 +179,23 @@ void ResponseDisplay::refresh()
         changed = true;
     }
 
-    // Ease bands in and out the way the audio does, instead of popping.
+    // Ease band instances in and out the way the audio does, instead of popping.
+    const auto mask = EqEngine::activeInstances (settings, pitches, sampleRate);
     for (int b = 0; b < numBands; ++b)
     {
-        const float target = EqBand::resolveTarget (settings[(size_t) b], pitch, sampleRate).amount;
-        auto& a = shownAmount[(size_t) b];
-        if (! juce::approximatelyEqual (a, target))
+        for (int v = 0; v < maxVoices; ++v)
         {
-            a += 0.5f * (target - a);
-            if (std::abs (a - target) < 0.01f)
-                a = target;
-            changed = true;
+            const bool active = mask[(size_t) b][(size_t) v];
+            const float target = active ? EqBand::resolveTarget (settings[(size_t) b], pitches[(size_t) v], sampleRate).amount
+                                        : 0.0f;
+            auto& a = shownAmount[(size_t) b][(size_t) v];
+            if (! juce::approximatelyEqual (a, target))
+            {
+                a += 0.5f * (target - a);
+                if (std::abs (a - target) < 0.01f)
+                    a = target;
+                changed = true;
+            }
         }
     }
 
@@ -211,22 +228,27 @@ void ResponseDisplay::recomputeCurves()
         curve.assign ((size_t) columns, 0.0f);
 
         const auto& s = settings[(size_t) b];
-        const float amount = shownAmount[(size_t) b];
-        if (amount <= 0.0f)
-            continue;
 
-        const auto target = EqBand::resolveTarget (s, pitch, sampleRate);
-        const auto design = BandDesign::make (s, target.freqHz, juce::jmax (s.q, 0.01f), s.gainDb, amount, sampleRate);
+        // A band's curve is the combined response of its instances (one per sounding note).
+        for (int v = 0; v < maxVoices; ++v)
+        {
+            const float amount = shownAmount[(size_t) b][(size_t) v];
+            if (amount <= 0.0f)
+                continue;
+
+            const auto target = EqBand::resolveTarget (s, { pitches[(size_t) v].f0Hz, true }, sampleRate);
+            const auto design = BandDesign::make (s, target.freqHz, juce::jmax (s.q, 0.01f), s.gainDb, amount, sampleRate);
+
+            for (int c = 0; c < columns; ++c)
+            {
+                const double hz = columnHz[(size_t) c];
+                if (hz < 0.5 * sampleRate)
+                    curve[(size_t) c] += (float) juce::Decibels::gainToDecibels (std::abs (design.response (hz, sampleRate)), -200.0);
+            }
+        }
 
         for (int c = 0; c < columns; ++c)
-        {
-            const double hz = columnHz[(size_t) c];
-            const float db = hz < 0.5 * sampleRate
-                                 ? (float) juce::Decibels::gainToDecibels (std::abs (design.response (hz, sampleRate)), -200.0)
-                                 : 0.0f;
-            curve[(size_t) c] = db;
-            sumDb[(size_t) c] += db;
-        }
+            sumDb[(size_t) c] += curve[(size_t) c];
     }
 
     curvesDirty = false;
@@ -414,7 +436,7 @@ void ResponseDisplay::addBandAt (juce::Point<float> p)
     for (const auto& [suffix, value] : values)
         setComplete (param (free, suffix), value);
 
-    shownAmount[(size_t) free] = 0.0f;
+    shownAmount[(size_t) free].fill (0.0f);
     selectBand (free);
 }
 
@@ -577,25 +599,50 @@ void ResponseDisplay::drawAnalyzer (juce::Graphics& g)
     }
 }
 
+bool ResponseDisplay::isLive (int band) const
+{
+    for (float a : shownAmount[(size_t) band])
+        if (a > 0.01f)
+            return true;
+    return false;
+}
+
 void ResponseDisplay::drawHarmonics (juce::Graphics& g)
+{
+    if (! poly)
+    {
+        drawHarmonicSeries (g, pitches[0], 1.0f, true);
+        return;
+    }
+
+    // Poly: every sounding note gets its harmonics; the lowest is labelled and drawn strongest.
+    for (const auto& p : pitches)
+        if (p.voiced && ! juce::approximatelyEqual (p.f0Hz, pitch.f0Hz))
+            drawHarmonicSeries (g, p, 0.5f, false);
+
+    if (pitch.voiced)
+        drawHarmonicSeries (g, pitch, 1.0f, true);
+}
+
+void ResponseDisplay::drawHarmonicSeries (juce::Graphics& g, const PitchState& p, float alphaScale, bool labels)
 {
     g.setFont (theme::numbers (10.0f));
     float lastLabelX = -1.0e9f;
 
     for (int n = 1; n <= maxHarmonicLines; ++n)
     {
-        const double hz = pitch.f0Hz * n;
+        const double hz = p.f0Hz * n;
         if (hz > maxHz)
             break;
         if (hz < minHz)
             continue;
 
         const float x = std::round (xOf (hz)) + 0.5f;
-        const float alpha = (pitch.voiced ? 1.0f : 0.4f) * (n == 1 ? 0.6f : 0.42f - (float) n * 0.02f);
+        const float alpha = alphaScale * (p.voiced ? 1.0f : 0.4f) * (n == 1 ? 0.6f : 0.42f - (float) n * 0.02f);
         g.setColour (theme::harmonic.withAlpha (alpha));
 
         juce::Line<float> line (x, plot.getY(), x, plot.getBottom());
-        if (pitch.voiced)
+        if (p.voiced)
         {
             g.drawLine (line, n == 1 ? 1.5f : 1.0f);
         }
@@ -605,7 +652,7 @@ void ResponseDisplay::drawHarmonics (juce::Graphics& g)
             g.drawDashedLine (line, dashes, 2, 1.0f);
         }
 
-        if (x - lastLabelX > 16.0f)
+        if (labels && x - lastLabelX > 16.0f)
         {
             g.setColour (theme::harmonic.withAlpha (juce::jmin (1.0f, alpha * 2.0f)));
             g.drawText (n == 1 ? "f0" : juce::String (n), juce::Rectangle<float> (x - 12.0f, 1.0f, 24.0f, plot.getY() - 2.0f),
@@ -627,7 +674,7 @@ void ResponseDisplay::drawCurves (juce::Graphics& g)
 
     for (int b = 0; b < numBands; ++b)
     {
-        if (shownAmount[(size_t) b] <= 0.001f)
+        if (! isLive (b))
             continue;
 
         const auto& curve = bandDb[(size_t) b];
@@ -684,7 +731,7 @@ void ResponseDisplay::drawNodes (juce::Graphics& g)
         const auto& s = settings[(size_t) b];
         const auto p = nodePosition (b);
         const auto colour = theme::band (b);
-        const bool live = s.on && shownAmount[(size_t) b] > 0.01f;
+        const bool live = s.on && isLive (b);
         const auto circle = juce::Rectangle<float> (nodeRadius * 2.0f, nodeRadius * 2.0f).withCentre (p);
 
         if (live)

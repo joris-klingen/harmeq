@@ -120,6 +120,15 @@ void EqBand::update (const PitchState& pitch, int numSamples)
     }
     else
     {
+        // A band coming back from silence starts at its new frequency and fades in, rather than
+        // sweeping there (e.g. a voice slot taking over a new note).
+        if (amount <= 0.0f && amountTarget > 0.0f)
+        {
+            logFreq = targetLogFreq;
+            gainDb = settings.gainDb;
+            logQ = targetLogQ;
+        }
+
         const auto fa = smoothingAlpha (numSamples, freqSmoothingSeconds, sampleRate);
         const auto pa = smoothingAlpha (numSamples, paramSmoothingSeconds, sampleRate);
         logFreq += fa * (targetLogFreq - logFreq);
