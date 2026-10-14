@@ -15,7 +15,8 @@ input, or incoming MIDI — and sit on a chosen harmonic of it.
 - Monophonic pitch detection (YIN or McLeod/MPM) with confidence gating and glide smoothing.
 - MIDI: monophonic last-note priority, pitch bend.
 - Response-curve display with harmonic markers and detected-note readout.
-- Formats: VST3, AU (macOS), Standalone. CLAP optional via `clap-juce-extensions`.
+- Platform: **macOS only** (universal arm64 + x86_64). Formats: VST3, AU, Standalone. CLAP optional via
+  `clap-juce-extensions`.
 
 **Out of scope (v1)**: dynamic EQ, polyphonic tracking, linear-phase mode, M/S processing, spectrum-match.
 
@@ -29,7 +30,7 @@ input, or incoming MIDI — and sit on a chosen harmonic of it.
   `FORMATS VST3 AU Standalone`.
 - Unit tests: Catch2 (FetchContent), separate `HarmEQTests` target linking the DSP sources (DSP code is
   kept free of `AudioProcessor` so it is testable headless).
-- CI: GitHub Actions matrix (macOS / Windows / Ubuntu) → build, unit tests, **pluginval** at strictness 10.
+- CI: GitHub Actions on macOS → universal build, unit tests, `auval`, **pluginval** at strictness 10 (VST3 + AU).
 
 ```
 harmeq/
@@ -178,8 +179,8 @@ All parameters are automatable; parameter version hints set for future-proofing.
 - Nyquist fade: harmonic × f0 above 0.45 fs → band contributes 0 dB.
 
 **Integration**
-- pluginval (strictness 10) in CI on all three OSes.
-- Manual host matrix: Reaper, Ableton Live, Logic (AU + sidechain), Bitwig, FL Studio — specifically check
+- pluginval (strictness 10) and auval in CI on macOS.
+- Manual host matrix (macOS): Ableton Live, Logic (AU + sidechain), Reaper, Bitwig — specifically check
   sidechain routing and MIDI routing into an audio effect, which differ per host.
 
 **Performance target**: < 2 % of one core at 48 kHz stereo, 8 bands, 40 Hz min freq.
@@ -191,7 +192,7 @@ All parameters are automatable; parameter version hints set for future-proofing.
 Status: 1–3 done.
 
 1. **Skeleton** — CMake + JUCE FetchContent, empty processor with buses (main + sidechain) and MIDI in,
-   APVTS, generic editor, CI with pluginval.
+   APVTS, generic editor, macOS CI with pluginval.
 2. **Static EQ** — SVF + EqBand/EqEngine with Fixed-mode bands; unit tests for responses.
 3. **MIDI tracking** — MidiNoteTracker, Tracked mode, sub-block coefficient updates, glide. (Fastest route to
    a usable harmonic EQ, and validates the modulation path before pitch detection exists.)

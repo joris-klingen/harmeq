@@ -6,48 +6,24 @@ on:
   pull_request:
 
 jobs:
-  build:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux
-            os: ubuntu-24.04
-            pluginval: pluginval_Linux.zip
-            pluginval_bin: ./pluginval
-          - name: macOS
-            os: macos-14
-            pluginval: pluginval_macOS.zip
-            pluginval_bin: ./pluginval.app/Contents/MacOS/pluginval
-          - name: Windows
-            os: windows-2022
-            pluginval: pluginval_Windows.zip
-            pluginval_bin: ./pluginval.exe
-
-    defaults:
-      run:
-        shell: bash
+  macos:
+    name: macOS
+    runs-on: macos-14
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build xvfb libasound2-dev libfreetype-dev libfontconfig1-dev \
-            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libgl1-mesa-dev
 
       - name: Cache dependencies
         uses: actions/cache@v4
         with:
           path: build/_deps
-          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+          key: deps-macos-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release $([ "$RUNNER_OS" = Linux ] && echo -G Ninja)
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          -DHARMEQ_COPY_PLUGIN=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -55,17 +31,23 @@ jobs:
       - name: Unit tests
         run: ctest --test-dir build -C Release --output-on-failure
 
+      - name: auval
+        run: |
+          killall -9 AudioComponentRegistrar || true
+          auval -v aumf Hreq Jokl
+
       - name: pluginval
         run: |
-          curl -sSL -o pluginval.zip "https://github.com/Tracktion/pluginval/releases/latest/download/${{ matrix.pluginval }}"
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
           unzip -q pluginval.zip
-          RUN=""
-          [ "$RUNNER_OS" = Linux ] && RUN="xvfb-run -a"
-          $RUN ${{ matrix.pluginval_bin }} --strictness-level 10 --validate-in-process \
-            "build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3"
+          for plugin in build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3 build/HarmEQ_artefacts/Release/AU/HarmEQ.component; do
+            ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process "$plugin"
+          done
 
-      - name: Upload plugin
+      - name: Upload plugins
         uses: actions/upload-artifact@v4
         with:
-          name: HarmEQ-${{ runner.os }}
-          path: build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
+          name: HarmEQ-macOS
+          path: |
+            build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
+            build/HarmEQ_artefacts/Release/AU/HarmEQ.component
