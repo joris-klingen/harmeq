@@ -9,6 +9,7 @@ jobs:
   macos:
     name: macOS
     runs-on: macos-14
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +27,8 @@ jobs:
           -DHARMEQ_COPY_PLUGIN=ON
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        # Makefiles: a bare --parallel means unlimited "make -j", which exhausts the runner's memory.
+        run: cmake --build build --config Release --parallel "$(sysctl -n hw.ncpu)"
 
       - name: Unit tests
         run: ctest --test-dir build -C Release --output-on-failure
@@ -49,6 +51,7 @@ jobs:
   windows:
     name: Windows
     runs-on: windows-2022
+    timeout-minutes: 45
 
     defaults:
       run:
