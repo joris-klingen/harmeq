@@ -37,11 +37,14 @@ private:
     bool sidechainConnected = true;
 };
 
-// Second row: how pitch is followed, plus display options (range, analyzer).
+// Second row: how pitch is followed, plus display options (range, analyzer). The MIDI-only Bend field
+// becomes the Lookahead switch when the source is audio.
 class TrackingBar final : public juce::Component
 {
 public:
     explicit TrackingBar (HarmEQAudioProcessor&);
+
+    void refresh();
 
     SegmentedControl range { { juce::String (juce::CharPointer_UTF8 ("\xc2\xb1" "6")),
                                juce::String (juce::CharPointer_UTF8 ("\xc2\xb1" "12")),
@@ -60,8 +63,13 @@ private:
         juce::Rectangle<int> captionArea;
     };
 
+    HarmEQAudioProcessor& processor;
     ValueBox glide, fallback, transpose, bend;
     juce::ComboBox noPitch;
+    juce::TextButton lookahead { "Lookahead" };
+    std::unique_ptr<ButtonAttachment> lookaheadAttachment;
+    bool audioSource = false;
+    int shownLatency = -1;
     std::vector<std::unique_ptr<SliderAttachment>> attachments;
     std::unique_ptr<ComboAttachment> noPitchAttachment;
     std::vector<Field> fields;

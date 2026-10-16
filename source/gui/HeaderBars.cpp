@@ -222,9 +222,14 @@ void TopBar::paint (juce::Graphics& g)
 
 // ---------------------------------------------------------------------------------------------- tracking bar
 
-TrackingBar::TrackingBar (HarmEQAudioProcessor& p)
+TrackingBar::TrackingBar (HarmEQAudioProcessor& p) : processor (p)
 {
     auto& apvts = p.getValueTreeState();
+
+    lookahead.setClickingTogglesState (true);
+    lookahead.setColour (juce::TextButton::buttonOnColourId, theme::well.interpolatedWith (theme::harmonic, 0.25f));
+    lookaheadAttachment = std::make_unique<ButtonAttachment> (apvts, ParamIDs::lookahead, lookahead);
+    addChildComponent (lookahead);
 
     attachments.push_back (attach (apvts, ParamIDs::glide, glide, [] (double v) { return juce::String (juce::roundToInt (v)) + " ms"; }));
     attachments.push_back (attach (apvts, ParamIDs::fallbackFreq, fallback, [] (double v) { return theme::formatHz (v) + " Hz"; }));
@@ -250,6 +255,33 @@ TrackingBar::TrackingBar (HarmEQAudioProcessor& p)
 
     for (auto& f : fields)
         addAndMakeVisible (f.component);
+
+    refresh();
+}
+
+void TrackingBar::refresh()
+{
+    const bool audio = static_cast<PitchSource> ((int) processor.getValueTreeState().getRawParameterValue (ParamIDs::source)->load())
+                       != PitchSource::midi;
+    const int latency = processor.getLookaheadSamples();
+
+    if (audio != audioSource)
+    {
+        audioSource = audio;
+        bend.setVisible (! audio);
+        lookahead.setVisible (audio);
+        repaint();
+    }
+
+    if (latency != shownLatency)
+    {
+        shownLatency = latency;
+        const auto ms = juce::String (1000.0 * latency / processor.getDisplaySampleRate(), 0);
+        lookahead.setTooltip (latency > 0 ? "Lookahead on: the audio is delayed by " + ms
+                                                + " ms (reported to the host) so bands land on note changes"
+                                          : "Delay the audio by the detector's lag (about two periods of the "
+                                            "Detect low pitch) so bands land exactly on note changes");
+    }
 }
 
 void TrackingBar::resized()
@@ -272,6 +304,10 @@ void TrackingBar::resized()
     place (fields[5], r, true);
     for (size_t i = 0; i < 5; ++i)
         place (fields[i], r, false);
+
+    // Lookahead takes the whole Bend slot (caption included).
+    lookahead.setBounds (fields[4].captionArea.getUnion (bend.getBounds()).withSizeKeepingCentre (
+        fields[4].captionArea.getUnion (bend.getBounds()).getWidth(), 24));
 }
 
 void TrackingBar::paint (juce::Graphics& g)
@@ -282,6 +318,7 @@ void TrackingBar::paint (juce::Graphics& g)
     g.fillRect (getLocalBounds().removeFromBottom (1));
 
     for (auto& f : fields)
-        drawCaption (g, f.caption, f.captionArea);
+        if (! (audioSource && f.component == &bend))
+            drawCaption (g, f.caption, f.captionArea);
 }
 } // namespace harmeq

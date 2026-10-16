@@ -4,6 +4,7 @@
 
 #include "dsp/EqEngine.h"
 #include "dsp/AnalyzerTap.h"
+#include "dsp/LatencyDelay.h"
 #include "dsp/PitchDetector.h"
 #include "dsp/PitchTracker.h"
 
@@ -66,6 +67,9 @@ public:
     // Detection confidence (0–1) of the latest analysis frame, for the audio sources.
     float getPitchConfidence() const noexcept { return detectedConfidence.load (std::memory_order_relaxed); }
 
+    // Lookahead delay currently applied (0 when off or with MIDI), in samples.
+    int getLookaheadSamples() const noexcept { return appliedLatency.load (std::memory_order_relaxed); }
+
     bool isSidechainConnected() const noexcept { return sidechainConnected.load (std::memory_order_relaxed); }
 
     harmeq::BandSettings getBandSettings (int band) const noexcept;
@@ -93,6 +97,7 @@ private:
 
     void updateSettings();
     void detectPitch (juce::AudioBuffer<float>& buffer, int start, int numSamples) noexcept;
+    void updateLatency (int blockSamples, bool immediately = false) noexcept;
     void applyOutputGain (juce::AudioBuffer<float>&);
 
     juce::AudioProcessorValueTreeState apvts;
@@ -108,6 +113,7 @@ private:
     std::atomic<float>* minFreqParam = nullptr;
     std::atomic<float>* maxFreqParam = nullptr;
     std::atomic<float>* confidenceParam = nullptr;
+    std::atomic<float>* lookaheadParam = nullptr;
     std::array<BandParams, harmeq::numBands> bandParams;
 
     harmeq::EqEngine engine;
@@ -115,6 +121,11 @@ private:
     harmeq::PitchDetector detector;
     harmeq::PitchSource lastSource = harmeq::PitchSource::mainInput;
     std::atomic<float> detectedConfidence { 0.0f };
+
+    harmeq::LatencyDelay lookaheadDelay;
+    std::atomic<int> appliedLatency { 0 };
+    int pendingLatency = 0, pendingLatencyAge = 0;
+    double currentSampleRate = 48000.0;
     std::array<std::atomic<float>, harmeq::maxVoices> displayPitchHz;
     std::array<std::atomic<bool>, harmeq::maxVoices> displayVoiced;
     std::atomic<bool> polyActive { false };

@@ -41,9 +41,13 @@ public:
 
     const Result& getResult() const noexcept { return result; }
 
-    // Roughly how far (host samples) a detected pitch lags the audio it describes: half the analysis
-    // span plus one hop.
+    // How far (host samples) a detected pitch change lags the audio, i.e. the lookahead delay that lines
+    // bands up with it. Measured: a new note is accepted once it fills the whole analysis span
+    // (two periods of the lowest Detect pitch); mixed frames before that fail the confidence gate.
     int getLatencySamples() const noexcept;
+
+    // The largest getLatencySamples() can get at this sample rate (Detect low at its minimum).
+    int getMaxLatencySamples() const noexcept;
 
     double getAnalysisRate() const noexcept { return analysisRate; }
 
@@ -62,7 +66,7 @@ private:
     int fftSize = 1024;
     float fftScale = 1.0f;
     int ringPos = 0, hopSize = 60, samplesSinceHop = 0, filled = 0;
-    int tauMin = 6, tauMax = 240;
+    int tauMin = 6, tauMax = 240, largestTau = 500;
     float threshold = 0.5f;
 
     std::array<float, 3> recentLog2 {};

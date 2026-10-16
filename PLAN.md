@@ -190,7 +190,7 @@ All parameters are automatable; parameter version hints set for future-proofing.
 
 ## 8. Milestones
 
-Status: 1–4 and 6 done (GUI with spectrum analyzer; audio pitch detection), plus MIDI Lowest Note and Poly modes (see README). Next: 5, lookahead and latency reporting.
+Status: 1–6 done (audio pitch detection with lookahead; GUI with spectrum analyzer), plus MIDI Lowest Note and Poly modes (see README). Next: 7, polish.
 
 1. **Skeleton** — CMake + JUCE FetchContent, empty processor with buses (main + sidechain) and MIDI in,
    APVTS, generic editor, macOS CI with pluginval.

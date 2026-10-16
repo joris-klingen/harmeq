@@ -399,3 +399,219 @@ TEST_CASE ("Processor: sidechain pitch steers the EQ on the main input")
         CHECK (proc.getCurrentPitchHz() <= 0.0f);
     }
 }
+
+// ---------------------------------------------------------------------------------------------- lookahead
+
+namespace
+{
+struct LookaheadRun
+{
+    std::vector<float> input, output;
+    int latency = 0;
+};
+
+// Runs mono audio through a freshly prepared processor (Source = Main) and returns input, output and
+// the reported latency.
+LookaheadRun runMain (bool lookahead, const std::function<float (int)>& signal, int numSamples,
+                      const std::function<void (juce::AudioProcessorValueTreeState&)>& configure = {})
+{
+    constexpr double fs = 48000.0;
+    constexpr int blockSize = 256;
+
+    HarmEQAudioProcessor proc;
+    auto& apvts = proc.getValueTreeState();
+    setParam (apvts, ParamIDs::source, (float) PitchSource::mainInput);
+    setParam (apvts, ParamIDs::lookahead, lookahead ? 1.0f : 0.0f);
+    setParam (apvts, ParamIDs::glide, 0.0f);
+    if (configure)
+        configure (apvts);
+
+    proc.setPlayConfigDetails (2, 2, fs, blockSize);
+    proc.prepareToPlay (fs, blockSize);
+
+    LookaheadRun run;
+    run.latency = proc.getLatencySamples();
+    run.input.resize ((size_t) numSamples);
+    run.output.resize ((size_t) numSamples);
+
+    juce::AudioBuffer<float> buffer (2, blockSize);
+    juce::MidiBuffer midi;
+    for (int n = 0; n < numSamples; n += blockSize)
+    {
+        const int len = std::min (blockSize, numSamples - n);
+        buffer.setSize (2, len, false, false, true);
+        for (int i = 0; i < len; ++i)
+        {
+            run.input[(size_t) (n + i)] = signal (n + i);
+            buffer.setSample (0, i, run.input[(size_t) (n + i)]);
+            buffer.setSample (1, i, run.input[(size_t) (n + i)]);
+        }
+        proc.processBlock (buffer, midi);
+        for (int i = 0; i < len; ++i)
+            run.output[(size_t) (n + i)] = buffer.getSample (0, i);
+    }
+
+    return run;
+}
+} // namespace
+
+TEST_CASE ("Lookahead reports latency only for audio sources")
+{
+    juce::ScopedJuceInitialiser_GUI juce;
+
+    auto latencyFor = [] (PitchSource source, bool lookahead) {
+        HarmEQAudioProcessor proc;
+        setParam (proc.getValueTreeState(), ParamIDs::source, (float) source);
+        setParam (proc.getValueTreeState(), ParamIDs::lookahead, lookahead ? 1.0f : 0.0f);
+        proc.setPlayConfigDetails (2, 2, 48000.0, 256);
+        proc.prepareToPlay (48000.0, 256);
+        return proc.getLatencySamples();
+    };
+
+    CHECK (latencyFor (PitchSource::mainInput, false) == 0);
+    CHECK (latencyFor (PitchSource::midi, true) == 0);
+    const int main = latencyFor (PitchSource::mainInput, true);
+    CHECK (main > 480);   // > 10 ms
+    CHECK (main < 2400);  // < 50 ms at the default 50 Hz Detect low
+    CHECK (latencyFor (PitchSource::sidechain, true) == main);
+}
+
+TEST_CASE ("Lookahead delays the audio by exactly the reported latency")
+{
+    juce::ScopedJuceInitialiser_GUI juce;
+
+    // All bands off: the only thing left in the path is the delay.
+    auto bandsOff = [] (juce::AudioProcessorValueTreeState& apvts) {
+        for (int b = 0; b < numBands; ++b)
+            setParam (apvts, ParamIDs::band (b, "on"), 0.0f);
+    };
+
+    juce::Random rng (11);
+    const auto run = runMain (true, [&] (int) { return rng.nextFloat() - 0.5f; }, 48000, bandsOff);
+    REQUIRE (run.latency > 0);
+
+    for (int n = run.latency; n < 48000; n += 97)
+        REQUIRE (juce::exactlyEqual (run.output[(size_t) n], run.input[(size_t) (n - run.latency)]));
+}
+
+TEST_CASE ("Lookahead lines tracked bands up with note changes")
+{
+    juce::ScopedJuceInitialiser_GUI juce;
+    constexpr double fs = 48000.0;
+    constexpr int blockSize = 256;
+    const int change = (int) (0.6 * fs), total = (int) (1.2 * fs);
+
+    // A saw jumps from A2 to E3; band 1 boosts the fundamental by 12 dB.
+    auto boostFundamental = [] (juce::AudioProcessorValueTreeState& apvts) {
+        setParam (apvts, ParamIDs::band (0, "harmonic"), 1.0f);
+        setParam (apvts, ParamIDs::band (0, "gain"), 12.0f);
+        setParam (apvts, ParamIDs::band (0, "q"), 6.0f);
+    };
+
+    auto sawSignal = [&] {
+        auto phase = std::make_shared<double> (0.0);
+        return [phase, change] (int n) {
+            const double f = n < change ? 110.0 : 164.8;
+            const float s = 0.4f * waveAt (Wave::saw, *phase, f, fs);
+            *phase = std::fmod (*phase + f / fs, 1.0);
+            return s;
+        };
+    };
+
+    // Reference: the same audio with the band driven by MIDI notes timed exactly at the change.
+    std::vector<float> ideal ((size_t) total);
+    {
+        HarmEQAudioProcessor proc;
+        auto& apvts = proc.getValueTreeState();
+        setParam (apvts, ParamIDs::source, (float) PitchSource::midi);
+        setParam (apvts, ParamIDs::glide, 0.0f);
+        boostFundamental (apvts);
+        proc.setPlayConfigDetails (2, 2, fs, blockSize);
+        proc.prepareToPlay (fs, blockSize);
+
+        auto signal = sawSignal();
+        juce::AudioBuffer<float> buffer (2, blockSize);
+        juce::MidiBuffer midi;
+        for (int n = 0; n < total; n += blockSize)
+        {
+            midi.clear();
+            if (n == 0)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 45, (juce::uint8) 100), 0);
+            if (change >= n && change < n + blockSize)
+            {
+                midi.addEvent (juce::MidiMessage::noteOff (1, 45), change - n);
+                midi.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), change - n);
+            }
+            for (int i = 0; i < blockSize; ++i)
+            {
+                const float s = signal (n + i);
+                buffer.setSample (0, i, s);
+                buffer.setSample (1, i, s);
+            }
+            proc.processBlock (buffer, midi);
+            for (int i = 0; i < blockSize; ++i)
+                ideal[(size_t) (n + i)] = buffer.getSample (0, i);
+        }
+    }
+
+    // Counts 5 ms windows around the change where the detected-pitch output (re-aligned by its reported
+    // latency) differs from the ideal by more than 1.5 dB.
+    auto misalignedWindows = [&] (bool lookahead) {
+        const auto run = runMain (lookahead, sawSignal(), total, boostFundamental);
+        const int win = (int) (0.005 * fs);
+        int bad = 0;
+        for (int start = change - (int) (0.1 * fs); start < change + (int) (0.15 * fs); start += win)
+        {
+            double a = 0.0, b = 0.0;
+            for (int i = start; i < start + win; ++i)
+            {
+                a += (double) run.output[(size_t) (i + run.latency)] * run.output[(size_t) (i + run.latency)];
+                b += (double) ideal[(size_t) i] * ideal[(size_t) i];
+            }
+            if (std::abs (10.0 * std::log10 (a / b)) > 1.5)
+                ++bad;
+        }
+        return bad;
+    };
+
+    const int without = misalignedWindows (false);
+    const int with = misalignedWindows (true);
+    INFO ("misaligned 5 ms windows: " << without << " without lookahead, " << with << " with");
+    CHECK (without >= 6);
+    CHECK (with <= 2);
+}
+
+TEST_CASE ("Lookahead switched on during playback settles before the latency changes")
+{
+    juce::ScopedJuceInitialiser_GUI juce;
+    constexpr double fs = 48000.0;
+    constexpr int blockSize = 480; // 10 ms
+
+    HarmEQAudioProcessor proc;
+    auto& apvts = proc.getValueTreeState();
+    setParam (apvts, ParamIDs::source, (float) PitchSource::mainInput);
+    proc.setPlayConfigDetails (2, 2, fs, blockSize);
+    proc.prepareToPlay (fs, blockSize);
+    REQUIRE (proc.getLatencySamples() == 0);
+
+    juce::AudioBuffer<float> buffer (2, blockSize);
+    juce::MidiBuffer midi;
+    auto runMs = [&] (int ms) {
+        for (int i = 0; i < ms / 10; ++i)
+        {
+            buffer.clear();
+            proc.processBlock (buffer, midi);
+        }
+    };
+
+    setParam (apvts, ParamIDs::lookahead, 1.0f);
+    runMs (100);
+    CHECK (proc.getLatencySamples() == 0); // still settling
+    runMs (300);
+    CHECK (proc.getLatencySamples() > 0);
+    CHECK (proc.getLookaheadSamples() == proc.getLatencySamples());
+
+    setParam (apvts, ParamIDs::source, (float) PitchSource::midi);
+    runMs (400);
+    CHECK (proc.getLatencySamples() == 0);
+}

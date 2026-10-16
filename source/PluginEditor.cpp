@@ -70,6 +70,7 @@ void HarmEQAudioProcessorEditor::selectBand (int band)
 void HarmEQAudioProcessorEditor::timerCallback()
 {
     topBar.refresh();
+    trackingBar.refresh();
     display.refresh();
     strip.refresh (selectedBand);
 }

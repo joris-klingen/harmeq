@@ -34,6 +34,7 @@ HarmEQAudioProcessor::HarmEQAudioProcessor()
     minFreqParam = apvts.getRawParameterValue (ParamIDs::minFreq);
     maxFreqParam = apvts.getRawParameterValue (ParamIDs::maxFreq);
     confidenceParam = apvts.getRawParameterValue (ParamIDs::confidence);
+    lookaheadParam = apvts.getRawParameterValue (ParamIDs::lookahead);
 
     for (int b = 0; b < numBands; ++b)
     {
@@ -52,9 +53,15 @@ HarmEQAudioProcessor::HarmEQAudioProcessor()
 
 void HarmEQAudioProcessor::prepareToPlay (double sampleRate, int)
 {
+    currentSampleRate = sampleRate;
     engine.prepare (sampleRate);
     pitchTracker.prepare (sampleRate);
     detector.prepare (sampleRate);
+
+    // Settle the lookahead immediately here; while playing, changes are debounced (updateLatency).
+    updateSettings();
+    lookaheadDelay.prepare (juce::jmax (1, getMainBusNumOutputChannels()), detector.getMaxLatencySamples());
+    updateLatency (0, true);
 
     outputGain.reset (sampleRate, 0.02);
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputGainParam->load()));
@@ -86,6 +93,36 @@ void HarmEQAudioProcessor::updateSettings()
 
     for (int b = 0; b < numBands; ++b)
         engine.setBandSettings (b, getBandSettings (b));
+}
+
+// Lookahead: with an audio source, delay the EQ'd audio by the detector's lag so detected pitches line
+// up with the notes they came from, and report it as latency. A new value only takes effect once it has
+// been stable for a quarter second, so dragging Detect low doesn't make the host re-align on every step.
+void HarmEQAudioProcessor::updateLatency (int blockSamples, bool immediately) noexcept
+{
+    const bool wanted = lookaheadParam->load() > 0.5f && lastSource != harmeq::PitchSource::midi;
+    const int target = wanted ? detector.getLatencySamples() : 0;
+
+    if (! immediately)
+    {
+        if (target != pendingLatency)
+        {
+            pendingLatency = target;
+            pendingLatencyAge = 0;
+            return;
+        }
+
+        pendingLatencyAge += blockSamples;
+        if (target == appliedLatency.load (std::memory_order_relaxed) || pendingLatencyAge < (int) (0.25 * currentSampleRate))
+            return;
+    }
+
+    pendingLatency = target;
+
+    lookaheadDelay.reset();
+    lookaheadDelay.setDelay (target);
+    appliedLatency.store (target, std::memory_order_relaxed);
+    setLatencySamples (target);
 }
 
 // Runs the detector on this chunk of the selected audio source (before the EQ touches it) and hands
@@ -201,6 +238,7 @@ void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const int numSamples = mainBuffer.getNumSamples();
 
     updateSettings();
+    updateLatency (numSamples);
 
     sidechainConnected.store (getBusCount (true) > 1 && getBusBuffer (buffer, true, 1).getNumChannels() > 0,
                               std::memory_order_relaxed);
@@ -223,6 +261,7 @@ void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             end = std::min (end, (*event).samplePosition);
 
         detectPitch (buffer, pos, end - pos);
+        lookaheadDelay.process (mainBuffer.getArrayOfWritePointers(), mainBuffer.getNumChannels(), pos, end - pos);
         pitches = pitchTracker.advance (end - pos);
         engine.process (mainBuffer, pos, end - pos, pitches);
         pos = end;

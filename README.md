@@ -32,8 +32,8 @@ sudo apt-get install libasound2-dev libfreetype-dev libfontconfig1-dev libx11-de
 ![HarmEQ](docs/screenshot.png)
 
 Done: the EQ bands, MIDI pitch tracking (Last / Lowest / Poly), audio pitch detection from the main input
-or a sidechain, and the GUI with its spectrum analyzer. Next: lookahead, so detected pitch lines up with
-note onsets (see PLAN.md, step 5).
+or a sidechain with lookahead, and the GUI with its spectrum analyzer. Next: polish (presets, performance,
+host testing; see PLAN.md, step 7).
 
 ## Pitch from audio (Main / Sidechain)
 
@@ -48,8 +48,13 @@ monophonic: one note at a time.
   the bands jump around on noisy or breathy material; lower it if they keep dropping out.
 - Short dropouts (a consonant, a pick scrape) keep the last pitch; after that, *No pitch* decides what
   happens. Octave jumps that last a single analysis frame are filtered out.
-- Detection lags the audio by roughly two periods of the lowest Detect pitch (about 40 ms at 50 Hz),
-  so a band may arrive slightly after a note starts. Lookahead (step 5) will compensate.
+- Detection lags the audio by about two periods of the lowest Detect pitch (40 ms at 50 Hz, 20 ms at
+  100 Hz), so without help a band arrives that much after each note change.
+- **Lookahead** (in the second row, where Bend is for MIDI) delays the audio by exactly that lag and
+  reports it to the host as plugin latency, so bands land on the note changes. Live compensates
+  automatically; use it for mixing, and leave it off when playing live through the plugin. Raising
+  Detect low shortens the delay. A changed delay takes effect after a quarter second, so dragging
+  Detect low doesn't make the host re-align on every step. MIDI needs no lookahead and adds no latency.
 - With Sidechain selected and nothing routed to it, the top bar says *No sidechain signal*.
 
 ## MIDI note modes

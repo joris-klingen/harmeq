@@ -28,7 +28,7 @@ void PitchDetector::prepare (double newSampleRate)
     antiAlias2 = SvfCoefficients::design (FilterType::lowPass, cutoff, 1.3066, 0.0, sampleRate);
 
     // Sized for the lowest pitch the parameters allow, so range changes never allocate.
-    const int largestTau = (int) std::ceil (analysisRate / lowestSupportedHz) + 2;
+    largestTau = (int) std::ceil (analysisRate / lowestSupportedHz) + 2;
     ring.assign ((size_t) (2 * largestTau + 2), 0.0f);
     frame.assign (ring.size(), 0.0f);
     diff.assign ((size_t) largestTau + 2, 0.0f);
@@ -87,8 +87,12 @@ void PitchDetector::setRange (float minHz, float maxHz) noexcept
 
 int PitchDetector::getLatencySamples() const noexcept
 {
-    // The analysis span is 2·tauMax decimated samples; a pitch describes its middle.
-    return (tauMax + hopSize) * decimation;
+    return 2 * tauMax * decimation;
+}
+
+int PitchDetector::getMaxLatencySamples() const noexcept
+{
+    return 2 * largestTau * decimation;
 }
 
 void PitchDetector::push (const float* samples, int numSamples) noexcept
