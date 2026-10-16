@@ -72,6 +72,19 @@ With **Source = MIDI**, **Notes** picks which notes the tracked bands follow:
     20 cents of each other (e.g. C's 3rd and G's 2nd harmonic in a C major chord), only one applies, so a
     −6 dB cut never becomes −12 dB just because of the chord.
 
+## Sound-quality notes
+
+- **No aliasing from the EQ.** Filtering only changes the level and phase of what is already there, so no
+  oversampling is needed. Moving bands are glided sample by sample (coefficients interpolated within
+  each 32-sample block), so tracking vibrato or note changes doesn't add zipper noise.
+- **Phase.** Like any analog-style EQ, each band shifts phase around its frequency, identically on both
+  channels. That only matters if you blend HarmEQ with the dry signal (e.g. a parallel rack chain), where
+  it causes comb filtering near the bands.
+- **Fades.** Bands fade in and out without dips: bells and shelves by their gain, notches by their depth,
+  and high/low pass by sliding the cutoff out of the way.
+- **Very high bands** (above ~10 kHz at 44.1/48 kHz) come out somewhat narrower than set, as with most
+  digital EQs ("cramping").
+
 ## Using the GUI
 
 The display shows the combined EQ curve (white), each band's curve in its colour, and lines at the

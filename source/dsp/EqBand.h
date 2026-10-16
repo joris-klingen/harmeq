@@ -50,7 +50,7 @@ struct BandDesign
 {
     std::array<SvfCoefficients, 2> coeffs {};
     int numStages = 1;
-    float wet = 1.0f; // < 1: crossfade against the dry signal (pass/notch types fading in or out)
+    float wet = 1.0f; // < 1: crossfade against the input (a notch fading in or out)
 
     static BandDesign make (const BandSettings& s, double freqHz, double q, double gainDb, float amount,
                             double sampleRate);
@@ -100,7 +100,8 @@ private:
 
     float logFreq = 10.0f, gainDb = 0.0f, logQ = 0.0f, amount = 0.0f, amountTarget = 0.0f;
 
-    BandDesign design;
+    BandDesign design, previous;
+    bool interpolate = false, wasAudible = false;
     std::array<std::array<SvfState, 2>, maxChannels> state {};
 };
 } // namespace harmeq
