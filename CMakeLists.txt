@@ -40,6 +40,7 @@ target_sources(HarmEQ
         source/Parameters.cpp
         source/dsp/EqBand.cpp
         source/dsp/EqEngine.cpp
+        source/dsp/PitchDetector.cpp
         source/dsp/PitchTracker.cpp
         source/gui/BandStrip.cpp
         source/gui/Controls.cpp

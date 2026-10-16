@@ -30,7 +30,15 @@ float PitchTracker::noteLog2 (int note) const noexcept
 
 bool PitchTracker::sourcePitch (float& log2Hz) const noexcept
 {
-    if (settings.source != PitchSource::midi || ! midi.hasNote())
+    if (settings.source != PitchSource::midi)
+    {
+        if (! detectedVoiced)
+            return false;
+        log2Hz = std::log2 (detectedHz) + settings.transpose / 12.0f;
+        return true;
+    }
+
+    if (! midi.hasNote())
         return false;
 
     log2Hz = noteLog2 (settings.midiMode == MidiMode::lowestNote ? midi.lowestNote() : midi.currentNote());

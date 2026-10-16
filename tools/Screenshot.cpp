@@ -1,5 +1,5 @@
 // Renders the editor to a PNG with example settings and live audio/MIDI, for reviewing the GUI
-// without a host:  HarmEQScreenshot out.png [scale] [poly]
+// without a host:  HarmEQScreenshot out.png [scale] [poly|audio]
 #include "Parameters.h"
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
@@ -52,9 +52,12 @@ int main (int argc, char** argv)
     proc.prepareToPlay (fs, blockSize);
     exampleSettings (proc.getValueTreeState());
 
-    const bool poly = argc > 3 && juce::String (argv[3]) == "poly";
+    const juce::String scenario = argc > 3 ? argv[3] : "";
+    const bool poly = scenario == "poly";
     if (poly)
         set (proc.getValueTreeState(), harmeq::ParamIDs::midiMode, (float) harmeq::MidiMode::poly);
+    if (scenario == "audio") // pitch detected from the audio itself, no MIDI
+        set (proc.getValueTreeState(), harmeq::ParamIDs::source, (float) harmeq::PitchSource::mainInput);
 
     std::unique_ptr<juce::AudioProcessorEditor> base (proc.createEditor());
     auto* editor = dynamic_cast<HarmEQAudioProcessorEditor*> (base.get());

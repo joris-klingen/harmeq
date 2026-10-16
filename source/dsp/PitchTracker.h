@@ -14,7 +14,8 @@ namespace harmeq
 // bands never jump to another note; released slots fade out at their last pitch. With No-Pitch Mode
 // = Hold, releasing every key keeps the last chord until the next note.
 //
-// Audio pitch detection (main/sidechain) is not implemented yet; those sources currently report no pitch.
+// Main input / Sidechain: the caller runs a PitchDetector and hands its result to setDetectedPitch()
+// before each advance(); it is treated like a single note (transpose and glide apply).
 class PitchTracker
 {
 public:
@@ -35,6 +36,13 @@ public:
     void setSettings (const Settings& s) noexcept { settings = s; }
     void handleMidi (const juce::MidiMessage& m) noexcept { midi.handle (m); }
 
+    // Latest detector output for the audio sources (ignored when the source is MIDI).
+    void setDetectedPitch (float f0Hz, bool voiced) noexcept
+    {
+        detectedHz = f0Hz;
+        detectedVoiced = voiced && f0Hz > 0.0f;
+    }
+
     // Advances by numSamples and returns the pitches to use for that span.
     PitchSet advance (int numSamples) noexcept;
 
@@ -51,6 +59,9 @@ private:
     Settings settings;
     MidiNoteTracker midi;
     double sampleRate = 44100.0;
+
+    float detectedHz = 0.0f;
+    bool detectedVoiced = false;
 
     // Mono state
     float currentLog2 = 0.0f, lastVoicedLog2 = 0.0f;

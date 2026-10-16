@@ -169,7 +169,7 @@ TEST_CASE ("No-pitch modes")
         CHECK_THAT (p.f0Hz, WithinRel (110.0f, 1e-5f));
     }
 
-    SECTION ("Audio sources report no pitch until detection exists")
+    SECTION ("Audio sources report no pitch until the detector finds one")
     {
         s.source = PitchSource::sidechain;
         s.noPitchMode = NoPitchMode::bypassBands;

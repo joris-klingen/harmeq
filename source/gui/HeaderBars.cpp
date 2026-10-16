@@ -23,6 +23,17 @@ TopBar::TopBar (HarmEQAudioProcessor& p)
     addAndMakeVisible (source);
     addAndMakeVisible (notes);
     notes.setTooltip ("MIDI notes: follow the last or lowest held note, or every note of a chord (Poly)");
+
+    auto& apvts = p.getValueTreeState();
+    auto hz = [] (double v) { return theme::formatHz (v); };
+    lowAttachment = attach (apvts, ParamIDs::minFreq, detectLow, hz);
+    highAttachment = attach (apvts, ParamIDs::maxFreq, detectHigh, hz);
+    confidenceAttachment = attach (apvts, ParamIDs::confidence, detectConfidence, [] (double v) { return juce::String (v, 2); });
+    detectLow.setTooltip ("Lowest pitch to detect (Hz). Raising it makes detection faster and cheaper");
+    detectHigh.setTooltip ("Highest pitch to detect (Hz)");
+    detectConfidence.setTooltip ("Minimum detection confidence. Raise it if the pitch jumps around on noisy material");
+    for (auto* c : { &detectLow, &detectHigh, &detectConfidence })
+        addChildComponent (c);
     outputAttachment = attach (p.getValueTreeState(), ParamIDs::outputGain, outputGain,
                                [] (double v) { return theme::formatDb (v); });
     outputGain.setTooltip ("Output gain");
@@ -45,7 +56,17 @@ void TopBar::refresh()
         pitchesChanged = newPitches[v].voiced != pitches[v].voiced
                          || (newPitches[v].voiced && ! juce::approximatelyEqual (newPitches[v].f0Hz, pitches[v].f0Hz));
 
-    notes.setEnabled (newSource == PitchSource::midi);
+    const bool midiSource = newSource == PitchSource::midi;
+    notes.setVisible (midiSource);
+    for (auto* c : { &detectLow, &detectHigh, &detectConfidence })
+        c->setVisible (! midiSource);
+
+    const float newThreshold = processor.getValueTreeState().getRawParameterValue (ParamIDs::confidence)->load();
+    if (! juce::approximatelyEqual (newThreshold, threshold))
+    {
+        threshold = newThreshold;
+        pitchesChanged = true;
+    }
 
     if (juce::approximatelyEqual (newPitch.f0Hz, pitch.f0Hz) && newPitch.voiced == pitch.voiced && ! pitchesChanged
         && juce::approximatelyEqual (newConfidence, confidence) && newSource == sourceMode
@@ -58,7 +79,7 @@ void TopBar::refresh()
     confidence = newConfidence;
     sourceMode = newSource;
     sidechainConnected = newSidechain;
-    repaint (readoutArea.getUnion (sourceCaption).getUnion (source.getBounds().expanded (200, 0)));
+    repaint();
 }
 
 void TopBar::resized()
@@ -70,8 +91,19 @@ void TopBar::resized()
     sourceCaption = r.removeFromLeft (50);
     source.setBounds (r.removeFromLeft (196).withSizeKeepingCentre (196, 26));
     r.removeFromLeft (16);
-    notesCaption = r.removeFromLeft (46);
-    notes.setBounds (r.removeFromLeft (156).withSizeKeepingCentre (156, 26));
+    // The MIDI note mode and the detection settings share this space; only one shows at a time.
+    auto modeArea = r.removeFromLeft (238);
+    notesCaption = modeArea.withWidth (46);
+    notes.setBounds (modeArea.withTrimmedLeft (46).withWidth (156).withSizeKeepingCentre (156, 26));
+
+    auto d = modeArea;
+    detectCaption = d.removeFromLeft (50);
+    detectLow.setBounds (d.removeFromLeft (48).withSizeKeepingCentre (48, 26));
+    rangeDash = d.removeFromLeft (12);
+    detectHigh.setBounds (d.removeFromLeft (50).withSizeKeepingCentre (50, 26));
+    d.removeFromLeft (10);
+    confidenceCaption = d.removeFromLeft (34);
+    detectConfidence.setBounds (d.removeFromLeft (44).withSizeKeepingCentre (44, 26));
 
     auto right = r.removeFromRight (120);
     outCaption = right.removeFromLeft (32);
@@ -99,8 +131,18 @@ void TopBar::paint (juce::Graphics& g)
     }
 
     drawCaption (g, "Source", sourceCaption);
-    drawCaption (g, "Notes", notesCaption, juce::Justification::centredLeft,
-                 sourceMode == PitchSource::midi ? theme::muted : theme::faint);
+    if (sourceMode == PitchSource::midi)
+    {
+        drawCaption (g, "Notes", notesCaption);
+    }
+    else
+    {
+        drawCaption (g, "Detect", detectCaption);
+        drawCaption (g, "Conf", confidenceCaption);
+        g.setColour (theme::muted);
+        g.setFont (theme::numbers (12.0f));
+        g.drawText (juce::String (juce::CharPointer_UTF8 ("\xe2\x80\x93")), rangeDash, juce::Justification::centred, false);
+    }
     drawCaption (g, "Out", outCaption);
 
     // Readout, right-aligned in the space between source and output: [warning] note cents Hz [meter|MIDI]
@@ -118,10 +160,14 @@ void TopBar::paint (juce::Graphics& g)
     }
     else
     {
+        // Confidence bar, green when it passes the threshold (the tick).
         g.setColour (theme::well);
         g.fillRoundedRectangle (meter.toFloat(), 3.0f);
-        g.setColour (confidence > 0.5f ? theme::good : theme::faint);
+        g.setColour (confidence >= threshold ? theme::good : theme::faint);
         g.fillRoundedRectangle (meter.toFloat().withWidth (meter.getWidth() * juce::jlimit (0.0f, 1.0f, confidence)), 3.0f);
+        g.setColour (theme::muted);
+        const float tickX = (float) meter.getX() + (float) meter.getWidth() * juce::jlimit (0.0f, 1.0f, threshold);
+        g.drawLine (tickX, (float) meter.getY() - 3.0f, tickX, (float) meter.getBottom() + 3.0f, 1.0f);
     }
 
     r.removeFromRight (12);
@@ -157,24 +203,20 @@ void TopBar::paint (juce::Graphics& g)
         g.setFont (theme::numbers (19.0f));
         g.drawText (note, r.removeFromRight (56), juce::Justification::centredRight, false);
     }
+    else if (sourceMode == PitchSource::sidechain && ! sidechainConnected)
+    {
+        // Without a sidechain there can be no pitch; say why instead.
+        auto chip = r.removeFromRight (128).withSizeKeepingCentre (128, 20);
+        g.setColour (theme::warn.withAlpha (0.5f));
+        g.drawRoundedRectangle (chip.toFloat().reduced (0.5f), 4.0f, 1.0f);
+        g.setColour (theme::warn);
+        g.setFont (theme::caps (10.0f));
+        g.drawText ("No sidechain signal", chip, juce::Justification::centred, false);
+    }
     else
     {
         g.setColour (theme::muted);
         g.drawText ("no pitch", r.removeFromRight (90), juce::Justification::centredRight, false);
-    }
-
-    if (sourceMode == PitchSource::sidechain && ! sidechainConnected)
-    {
-        r.removeFromRight (12);
-        auto chip = r.removeFromRight (128).withSizeKeepingCentre (128, 20);
-        if (chip.getX() >= readoutArea.getX())
-        {
-            g.setColour (theme::warn.withAlpha (0.5f));
-            g.drawRoundedRectangle (chip.toFloat().reduced (0.5f), 4.0f, 1.0f);
-            g.setColour (theme::warn);
-            g.setFont (theme::caps (10.0f));
-            g.drawText ("No sidechain signal", chip, juce::Justification::centred, false);
-        }
     }
 }
 

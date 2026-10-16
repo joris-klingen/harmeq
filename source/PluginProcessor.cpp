@@ -31,6 +31,9 @@ HarmEQAudioProcessor::HarmEQAudioProcessor()
     pitchBendRangeParam = apvts.getRawParameterValue (ParamIDs::pitchBendRange);
     transposeParam = apvts.getRawParameterValue (ParamIDs::transpose);
     outputGainParam = apvts.getRawParameterValue (ParamIDs::outputGain);
+    minFreqParam = apvts.getRawParameterValue (ParamIDs::minFreq);
+    maxFreqParam = apvts.getRawParameterValue (ParamIDs::maxFreq);
+    confidenceParam = apvts.getRawParameterValue (ParamIDs::confidence);
 
     for (int b = 0; b < numBands; ++b)
     {
@@ -51,6 +54,7 @@ void HarmEQAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     engine.prepare (sampleRate);
     pitchTracker.prepare (sampleRate);
+    detector.prepare (sampleRate);
 
     outputGain.reset (sampleRate, 0.02);
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputGainParam->load()));
@@ -70,8 +74,62 @@ void HarmEQAudioProcessor::updateSettings()
     ps.transpose = transposeParam->load();
     pitchTracker.setSettings (ps);
 
+    detector.setRange (minFreqParam->load(), maxFreqParam->load());
+    detector.setThreshold (confidenceParam->load());
+
+    // A different input means old analysis history no longer applies.
+    if (ps.source != lastSource)
+    {
+        detector.reset();
+        lastSource = ps.source;
+    }
+
     for (int b = 0; b < numBands; ++b)
         engine.setBandSettings (b, getBandSettings (b));
+}
+
+// Runs the detector on this chunk of the selected audio source (before the EQ touches it) and hands
+// the result to the tracker.
+void HarmEQAudioProcessor::detectPitch (juce::AudioBuffer<float>& buffer, int start, int numSamples) noexcept
+{
+    using namespace harmeq;
+
+    if (lastSource == PitchSource::midi)
+    {
+        detectedConfidence.store (0.0f, std::memory_order_relaxed);
+        return;
+    }
+
+    const int busIndex = lastSource == PitchSource::sidechain ? 1 : 0;
+    const auto input = busIndex < getBusCount (true) ? getBusBuffer (buffer, true, busIndex) : juce::AudioBuffer<float>();
+    const int channels = input.getNumChannels();
+
+    if (channels == 0)
+    {
+        pitchTracker.setDetectedPitch (0.0f, false);
+        detectedConfidence.store (0.0f, std::memory_order_relaxed);
+        return;
+    }
+
+    // Mono mix, in pieces that fit a small stack buffer (chunks are at most EqEngine::maxChunkSize).
+    float mono[EqEngine::maxChunkSize];
+    for (int done = 0; done < numSamples;)
+    {
+        const int n = std::min (numSamples - done, EqEngine::maxChunkSize);
+        for (int i = 0; i < n; ++i)
+        {
+            float sum = 0.0f;
+            for (int ch = 0; ch < channels; ++ch)
+                sum += input.getReadPointer (ch)[start + done + i];
+            mono[i] = sum / (float) channels;
+        }
+        detector.push (mono, n);
+        done += n;
+    }
+
+    const auto& r = detector.getResult();
+    pitchTracker.setDetectedPitch (r.f0Hz, r.voiced);
+    detectedConfidence.store (r.confidence, std::memory_order_relaxed);
 }
 
 harmeq::PitchSet HarmEQAudioProcessor::getDisplayPitches() const noexcept
@@ -164,6 +222,7 @@ void HarmEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         if (event != midi.cend())
             end = std::min (end, (*event).samplePosition);
 
+        detectPitch (buffer, pos, end - pos);
         pitches = pitchTracker.advance (end - pos);
         engine.process (mainBuffer, pos, end - pos, pitches);
         pos = end;

@@ -31,9 +31,26 @@ sudo apt-get install libasound2-dev libfreetype-dev libfontconfig1-dev libx11-de
 
 ![HarmEQ](docs/screenshot.png)
 
-Done: the EQ bands, MIDI pitch tracking, and the GUI with its spectrum analyzer. Audio pitch detection
-(Main Input / Sidechain sources) is not implemented yet. With those sources selected, tracked bands
-behave as if no note is playing (see *No pitch*).
+Done: the EQ bands, MIDI pitch tracking (Last / Lowest / Poly), audio pitch detection from the main input
+or a sidechain, and the GUI with its spectrum analyzer. Next: lookahead, so detected pitch lines up with
+note onsets (see PLAN.md, step 5).
+
+## Pitch from audio (Main / Sidechain)
+
+With **Source = Main** the plugin detects the pitch of the audio it is EQ-ing; with **Sidechain** it
+listens to the sidechain input instead (route a track to HarmEQ's sidechain in your DAW). Detection is
+monophonic: one note at a time.
+
+- **Detect** sets the lowest and highest pitch to look for. Narrowing it to your material (e.g. 40–400 Hz
+  for bass) makes detection faster to react and less likely to jump.
+- **Conf** is the minimum confidence for a detected pitch to be used. The meter in the top bar shows the
+  current confidence, with a tick at this threshold; it turns green when a pitch is accepted. Raise it if
+  the bands jump around on noisy or breathy material; lower it if they keep dropping out.
+- Short dropouts (a consonant, a pick scrape) keep the last pitch; after that, *No pitch* decides what
+  happens. Octave jumps that last a single analysis frame are filtered out.
+- Detection lags the audio by roughly two periods of the lowest Detect pitch (about 40 ms at 50 Hz),
+  so a band may arrive slightly after a note starts. Lookahead (step 5) will compensate.
+- With Sidechain selected and nothing routed to it, the top bar says *No sidechain signal*.
 
 ## MIDI note modes
 
@@ -69,8 +86,9 @@ sit on the lowest note). The note readout uses Ableton's octave numbering (MIDI 
 Knobs and value boxes drag up/down (Shift for fine) and reset on double-click. Window size, display range
 and analyzer mode are saved with the project.
 
-`build/HarmEQScreenshot out.png [scale] [poly]` renders the editor with example settings and a held
-MIDI note (or a chord with `poly`), which is handy for checking GUI changes without a host.
+`build/HarmEQScreenshot out.png [scale] [poly|audio]` renders the editor with example settings and a
+held MIDI note (a chord with `poly`, detected audio pitch with `audio`), which is handy for checking GUI
+changes without a host.
 
 ## Trying it in Ableton Live
 

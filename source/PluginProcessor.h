@@ -4,6 +4,7 @@
 
 #include "dsp/EqEngine.h"
 #include "dsp/AnalyzerTap.h"
+#include "dsp/PitchDetector.h"
 #include "dsp/PitchTracker.h"
 
 class HarmEQAudioProcessor final : public juce::AudioProcessor
@@ -62,8 +63,8 @@ public:
 
     bool isPolyActive() const noexcept { return polyActive.load (std::memory_order_relaxed); }
 
-    // Detection confidence (0–1). Audio pitch detection is not implemented yet, so this is 0.
-    float getPitchConfidence() const noexcept { return 0.0f; }
+    // Detection confidence (0–1) of the latest analysis frame, for the audio sources.
+    float getPitchConfidence() const noexcept { return detectedConfidence.load (std::memory_order_relaxed); }
 
     bool isSidechainConnected() const noexcept { return sidechainConnected.load (std::memory_order_relaxed); }
 
@@ -91,6 +92,7 @@ private:
     };
 
     void updateSettings();
+    void detectPitch (juce::AudioBuffer<float>& buffer, int start, int numSamples) noexcept;
     void applyOutputGain (juce::AudioBuffer<float>&);
 
     juce::AudioProcessorValueTreeState apvts;
@@ -103,10 +105,16 @@ private:
     std::atomic<float>* pitchBendRangeParam = nullptr;
     std::atomic<float>* transposeParam = nullptr;
     std::atomic<float>* outputGainParam = nullptr;
+    std::atomic<float>* minFreqParam = nullptr;
+    std::atomic<float>* maxFreqParam = nullptr;
+    std::atomic<float>* confidenceParam = nullptr;
     std::array<BandParams, harmeq::numBands> bandParams;
 
     harmeq::EqEngine engine;
     harmeq::PitchTracker pitchTracker;
+    harmeq::PitchDetector detector;
+    harmeq::PitchSource lastSource = harmeq::PitchSource::mainInput;
+    std::atomic<float> detectedConfidence { 0.0f };
     std::array<std::atomic<float>, harmeq::maxVoices> displayPitchHz;
     std::array<std::atomic<bool>, harmeq::maxVoices> displayVoiced;
     std::atomic<bool> polyActive { false };
