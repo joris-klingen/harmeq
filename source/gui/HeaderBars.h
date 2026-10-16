@@ -7,7 +7,29 @@ class HarmEQAudioProcessor;
 
 namespace harmeq
 {
-// Top bar: name, pitch source, then either the MIDI note mode (MIDI) or the detection settings (audio
+// The plugin name with the current preset under it; click for the preset menu (factory and user presets,
+// save, open folder).
+class PresetSelector final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit PresetSelector (HarmEQAudioProcessor&);
+
+    void refresh();
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { repaint(); }
+
+private:
+    void showMenu();
+    void askNameAndSave();
+
+    HarmEQAudioProcessor& processor;
+    juce::String shownName;
+};
+
+// Top bar: name and preset, pitch source, then either the MIDI note mode (MIDI) or the detection settings (audio
 // sources), pitch readout, output gain.
 class TopBar final : public juce::Component
 {
@@ -21,11 +43,12 @@ public:
 
 private:
     HarmEQAudioProcessor& processor;
+    PresetSelector presetSelector;
     ParameterSegmented source, notes;
     ValueBox outputGain, detectLow, detectHigh, detectConfidence;
     std::unique_ptr<SliderAttachment> outputAttachment, lowAttachment, highAttachment, confidenceAttachment;
 
-    juce::Rectangle<int> logoArea, sourceCaption, notesCaption, detectCaption, rangeDash, confidenceCaption,
+    juce::Rectangle<int> logoArea, notesCaption, detectCaption, rangeDash, confidenceCaption,
         readoutArea, outCaption;
     float threshold = 0.5f;
 

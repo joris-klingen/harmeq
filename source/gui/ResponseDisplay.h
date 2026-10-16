@@ -87,7 +87,8 @@ private:
     float outputGainDb = 0.0f;
     bool curvesDirty = true;
 
-    std::vector<double> columnHz;
+    std::vector<double> columnHz, columnWarped; // frequency and tan(pi f / fs) per pixel column
+    std::vector<double> powerProduct;            // scratch for recomputeCurves
     std::array<std::vector<float>, numBands> bandDb;
     std::vector<float> sumDb;
 

@@ -219,8 +219,12 @@ void ResponseDisplay::recomputeCurves()
     columnHz.resize ((size_t) columns);
     sumDb.assign ((size_t) columns, outputGainDb);
 
+    columnWarped.resize ((size_t) columns);
     for (int c = 0; c < columns; ++c)
+    {
         columnHz[(size_t) c] = hzOf (plot.getX() + (float) c);
+        columnWarped[(size_t) c] = std::tan (juce::MathConstants<double>::pi * std::min (columnHz[(size_t) c], 0.4999 * sampleRate) / sampleRate);
+    }
 
     for (int b = 0; b < numBands; ++b)
     {
@@ -229,26 +233,33 @@ void ResponseDisplay::recomputeCurves()
 
         const auto& s = settings[(size_t) b];
 
-        // A band's curve is the combined response of its instances (one per sounding note).
+        // A band's curve is the combined response of its instances (one per sounding note): multiply
+        // their squared magnitudes, then take one log per point.
+        powerProduct.assign ((size_t) columns, 1.0);
+        bool any = false;
         for (int v = 0; v < maxVoices; ++v)
         {
             const float amount = shownAmount[(size_t) b][(size_t) v];
             if (amount <= 0.0f)
                 continue;
 
+            any = true;
             const auto target = EqBand::resolveTarget (s, { pitches[(size_t) v].f0Hz, true }, sampleRate);
             const auto design = BandDesign::make (s, target.freqHz, juce::jmax (s.q, 0.01f), s.gainDb, amount, sampleRate);
 
             for (int c = 0; c < columns; ++c)
-            {
-                const double hz = columnHz[(size_t) c];
-                if (hz < 0.5 * sampleRate)
-                    curve[(size_t) c] += (float) juce::Decibels::gainToDecibels (std::abs (design.response (hz, sampleRate)), -200.0);
-            }
+                if (columnHz[(size_t) c] < 0.5 * sampleRate)
+                    powerProduct[(size_t) c] *= std::norm (design.responseFromWarped (columnWarped[(size_t) c]));
         }
 
+        if (! any)
+            continue;
+
         for (int c = 0; c < columns; ++c)
+        {
+            curve[(size_t) c] = (float) (10.0 * std::log10 (std::max (powerProduct[(size_t) c], 1.0e-20)));
             sumDb[(size_t) c] += curve[(size_t) c];
+        }
     }
 
     curvesDirty = false;

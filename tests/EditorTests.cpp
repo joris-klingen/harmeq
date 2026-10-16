@@ -198,3 +198,96 @@ TEST_CASE ("Mouse editing on the response display")
         CHECK (paramValue (proc, 1, "on") < 0.5f);
     }
 }
+
+TEST_CASE ("Editor repaint cost", "[.perf]")
+{
+    juce::ScopedJuceInitialiser_GUI juce;
+    HarmEQAudioProcessor proc;
+    proc.setPlayConfigDetails (2, 2, 48000.0, 512);
+    proc.prepareToPlay (48000.0, 512);
+    std::unique_ptr<juce::AudioProcessorEditor> editor (proc.createEditor());
+    auto* e = dynamic_cast<HarmEQAudioProcessorEditor*> (editor.get());
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    juce::Random rng (1);
+    juce::Image image (juce::Image::ARGB, e->getWidth(), e->getHeight(), true);
+
+    double displayMs = 0.0, fullMs = 0.0;
+    constexpr int frames = 60;
+    for (int f = 0; f < frames; ++f)
+    {
+        for (int i = 0; i < 512; ++i)
+            buffer.setSample (0, i, rng.nextFloat() - 0.5f), buffer.setSample (1, i, rng.nextFloat() - 0.5f);
+        for (int b = 0; b < 4; ++b)
+            proc.processBlock (buffer, midi);
+
+        auto t0 = juce::Time::getMillisecondCounterHiRes();
+        e->refreshNow();
+        juce::Graphics g (image);
+        e->getDisplay().paintEntireComponent (g, true);
+        auto t1 = juce::Time::getMillisecondCounterHiRes();
+        e->paintEntireComponent (g, true);
+        auto t2 = juce::Time::getMillisecondCounterHiRes();
+        displayMs += t1 - t0;
+        fullMs += t2 - t1;
+    }
+    std::printf ("refresh + display paint: %.2f ms/frame, whole editor paint: %.2f ms/frame\n", displayMs / frames, fullMs / frames);
+
+    for (auto mode : { AnalyzerMode::off, AnalyzerMode::pre, AnalyzerMode::both })
+    {
+        e->getDisplay().setAnalyzerMode (mode);
+        double ms = 0.0;
+        for (int f = 0; f < frames; ++f)
+        {
+            juce::Graphics g (image);
+            auto t0 = juce::Time::getMillisecondCounterHiRes();
+            e->getDisplay().paintEntireComponent (g, true);
+            ms += juce::Time::getMillisecondCounterHiRes() - t0;
+        }
+        std::printf ("display paint, analyzer mode %d: %.2f ms\n", (int) mode, ms / frames);
+    }
+}
+
+TEST_CASE ("Curve recompute cost, Poly worst case", "[.perf]")
+{
+    juce::ScopedJuceInitialiser_GUI juce;
+    HarmEQAudioProcessor proc;
+    auto& apvts = proc.getValueTreeState();
+    auto set = [&] (const juce::String& id, float v) { auto* p = apvts.getParameter (id); p->setValueNotifyingHost (p->convertTo0to1 (v)); };
+    set (ParamIDs::source, (float) PitchSource::midi);
+    set (ParamIDs::midiMode, (float) MidiMode::poly);
+    for (int b = 0; b < numBands; ++b)
+    {
+        set (ParamIDs::band (b, "on"), 1.0f);
+        set (ParamIDs::band (b, "gain"), 3.0f);
+        set (ParamIDs::band (b, "slope"), 1.0f);
+    }
+    proc.setPlayConfigDetails (2, 2, 48000.0, 512);
+    proc.prepareToPlay (48000.0, 512);
+    std::unique_ptr<juce::AudioProcessorEditor> editor (proc.createEditor());
+    auto* e = dynamic_cast<HarmEQAudioProcessorEditor*> (editor.get());
+    e->getDisplay().setAnalyzerMode (AnalyzerMode::off);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    for (int n : { 36, 43, 48, 52, 55, 60 })
+        midi.addEvent (juce::MidiMessage::noteOn (1, n, (juce::uint8) 100), 0);
+    proc.processBlock (buffer, midi);
+
+    juce::Image image (juce::Image::ARGB, e->getWidth(), e->getHeight(), true);
+    double ms = 0.0;
+    constexpr int frames = 60;
+    for (int f = 0; f < frames; ++f)
+    {
+        midi.clear();
+        midi.addEvent (juce::MidiMessage::pitchWheel (1, 8192 + (f % 2 == 0 ? 600 : -600)), 0); // pitch moves every frame
+        proc.processBlock (buffer, midi);
+        juce::Graphics g (image);
+        auto t0 = juce::Time::getMillisecondCounterHiRes();
+        e->refreshNow();
+        e->getDisplay().paintEntireComponent (g, true);
+        ms += juce::Time::getMillisecondCounterHiRes() - t0;
+    }
+    std::printf ("Poly 6 notes x 8 bands, pitch moving: %.2f ms/frame (refresh + recompute + paint)\n", ms / frames);
+}

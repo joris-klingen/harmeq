@@ -56,6 +56,7 @@ struct BandDesign
                             double sampleRate);
 
     std::complex<double> response (double freqHz, double sampleRate) const;
+    std::complex<double> responseFromWarped (double warped) const; // warped = tan(pi f / fs)
 };
 
 // One EQ band: resolves its target frequency from the pitch, smooths frequency/gain/Q/amount per chunk,

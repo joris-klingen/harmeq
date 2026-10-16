@@ -10,7 +10,8 @@ add_executable(HarmEQTests
     FilterTests.cpp
     PitchTrackingTests.cpp
     EditorTests.cpp
-    DetectorTests.cpp)
+    DetectorTests.cpp
+    StateTests.cpp)
 
 target_link_libraries(HarmEQTests
     PRIVATE

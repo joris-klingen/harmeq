@@ -31,9 +31,23 @@ sudo apt-get install libasound2-dev libfreetype-dev libfontconfig1-dev libx11-de
 
 ![HarmEQ](docs/screenshot.png)
 
-Done: the EQ bands, MIDI pitch tracking (Last / Lowest / Poly), audio pitch detection from the main input
-or a sidechain with lookahead, and the GUI with its spectrum analyzer. Next: polish (presets, performance,
-host testing; see PLAN.md, step 7).
+All plan steps are done: the EQ bands, MIDI pitch tracking (Last / Lowest / Poly), audio pitch detection
+from the main input or a sidechain with lookahead, the GUI with its spectrum analyzer, presets, and a Mac
+installer. What's left is testing in hosts ([docs/HOST_TESTING.md](docs/HOST_TESTING.md)).
+
+## Installing on a Mac
+
+CI builds a package on every push: download **HarmEQ-macOS** from the run's artifacts on GitHub, unzip it,
+and double-click `install.command` (the first time, right-click it and choose Open). It installs the VST3
+into `~/Library/Audio/Plug-Ins/VST3` and the standalone app into Applications, and removes the quarantine
+flag, since the builds are not notarised by Apple.
+
+## Presets
+
+Click the preset name under **HarmEQ** (top left) for the preset menu: factory presets, your own presets,
+*Save Preset...* and *Show Presets Folder*. User presets are files in `~/Library/Audio/Presets/HarmEQ`
+(Windows: `Documents\HarmEQ\Presets`), so you can copy them between machines. A preset stores the sound
+settings only, not the window size or display options.
 
 ## Pitch from audio (Main / Sidechain)
 

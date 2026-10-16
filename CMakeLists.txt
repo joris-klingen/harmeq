@@ -38,6 +38,7 @@ target_sources(HarmEQ
         source/PluginProcessor.cpp
         source/PluginEditor.cpp
         source/Parameters.cpp
+        source/Presets.cpp
         source/dsp/EqBand.cpp
         source/dsp/EqEngine.cpp
         source/dsp/PitchDetector.cpp

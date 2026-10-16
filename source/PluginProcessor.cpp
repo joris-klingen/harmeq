@@ -314,15 +314,33 @@ juce::AudioProcessorEditor* HarmEQAudioProcessor::createEditor()
 
 void HarmEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    if (auto xml = apvts.copyState().createXml())
+    auto tree = apvts.copyState();
+    tree.setProperty (harmeq::state::versionID, harmeq::state::currentVersion, nullptr);
+    if (auto xml = tree.createXml())
         copyXmlToBinary (*xml, destData);
 }
 
 void HarmEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    if (auto xml = getXmlFromBinary (data, sizeInBytes))
-        if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    const auto xml = getXmlFromBinary (data, sizeInBytes);
+    if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
+        return;
+
+    auto loaded = juce::ValueTree::fromXml (*xml);
+    harmeq::state::migrate (loaded);
+
+    // Parameters missing from an older project get their defaults rather than keeping whatever this
+    // instance had (replaceState alone would keep them).
+    apvts.replaceState (harmeq::state::withParameters (apvts, loaded, loaded));
+}
+
+// Host bypass: pass the audio through unprocessed, but keep the lookahead delay so the track stays
+// aligned with the latency the host is compensating for.
+void HarmEQAudioProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+{
+    auto mainBuffer = getBusBuffer (buffer, false, 0);
+    lookaheadDelay.process (mainBuffer.getArrayOfWritePointers(), mainBuffer.getNumChannels(), 0,
+                            mainBuffer.getNumSamples());
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

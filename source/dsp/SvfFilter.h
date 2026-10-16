@@ -52,7 +52,14 @@ struct SvfCoefficients
     // prototype, so evaluate H(s) = m0 + (m1 s + m2) / (s^2 + k s + 1) at s = j tan(pi f / fs) / g.
     std::complex<double> response (double freqHz, double sampleRate) const
     {
-        const std::complex<double> s { 0.0, std::tan (std::numbers::pi * freqHz / sampleRate) / g };
+        return responseFromWarped (std::tan (std::numbers::pi * freqHz / sampleRate));
+    }
+
+    // The same, given the frequency's warped value tan(pi f / fs): lets a caller drawing many curves on
+    // the same frequency grid compute the tan() once per point.
+    std::complex<double> responseFromWarped (double warped) const
+    {
+        const std::complex<double> s { 0.0, warped / g };
         return (double) m0 + ((double) m1 * s + (double) m2) / (s * s + k * s + 1.0);
     }
 

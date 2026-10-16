@@ -40,13 +40,21 @@ jobs:
           ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
             build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
 
-      - name: Upload plugins
+      - name: Package
+        # ditto keeps the bundles' signatures and the installer's executable bit inside the zip.
+        run: |
+          mkdir -p dist/HarmEQ
+          cp -R build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3 dist/HarmEQ/
+          cp -R build/HarmEQ_artefacts/Release/Standalone/HarmEQ.app dist/HarmEQ/
+          cp installer/install.command dist/HarmEQ/
+          chmod +x dist/HarmEQ/install.command
+          ditto -c -k --keepParent dist/HarmEQ HarmEQ-macOS.zip
+
+      - name: Upload package
         uses: actions/upload-artifact@v4
         with:
           name: HarmEQ-macOS
-          path: |
-            build/HarmEQ_artefacts/Release/VST3/HarmEQ.vst3
-            build/HarmEQ_artefacts/Release/Standalone/HarmEQ.app
+          path: HarmEQ-macOS.zip
 
   windows:
     name: Windows

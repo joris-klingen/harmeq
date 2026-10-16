@@ -13,15 +13,122 @@ namespace
     }
 } // namespace
 
+// ---------------------------------------------------------------------------------------------- presets
+
+PresetSelector::PresetSelector (HarmEQAudioProcessor& p) : processor (p)
+{
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    setTooltip ("Presets");
+    refresh();
+}
+
+void PresetSelector::refresh()
+{
+    const auto name = processor.getPresetManager().getCurrentName();
+    if (name != shownName)
+    {
+        shownName = name;
+        repaint();
+    }
+}
+
+void PresetSelector::paint (juce::Graphics& g)
+{
+    auto r = getLocalBounds().reduced (0, 5);
+
+    juce::Font f (juce::FontOptions ("Helvetica Neue", 18.0f, juce::Font::plain));
+    f.setExtraKerningFactor (0.06f);
+    juce::AttributedString title;
+    title.append ("Harm", f, theme::text);
+    title.append ("EQ", f, theme::harmonic);
+    title.setJustification (juce::Justification::bottomLeft);
+    title.draw (g, r.removeFromTop (r.getHeight() / 2 + 2).toFloat());
+
+    g.setColour (isMouseOver() ? theme::text : theme::muted);
+    g.setFont (theme::label (11.0f));
+    g.drawFittedText (shownName + juce::String (juce::CharPointer_UTF8 (" \xe2\x96\xbe")), r, juce::Justification::topLeft, 1, 0.8f);
+}
+
+void PresetSelector::mouseDown (const juce::MouseEvent&)
+{
+    showMenu();
+}
+
+void PresetSelector::showMenu()
+{
+    auto& presets = processor.getPresetManager();
+    const auto factory = PresetManager::factoryNames();
+    const auto user = presets.userPresets();
+    const auto current = presets.getCurrentName();
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Factory");
+    for (int i = 0; i < factory.size(); ++i)
+        menu.addItem (1 + i, factory[i], true, factory[i] == current);
+
+    menu.addSectionHeader ("Yours");
+    if (user.isEmpty())
+        menu.addItem (-1, "(none saved yet)", false);
+    for (int i = 0; i < user.size(); ++i)
+        menu.addItem (1000 + i, user[i].getFileNameWithoutExtension(), true, user[i].getFileNameWithoutExtension() == current);
+
+    menu.addSeparator();
+    menu.addItem (2000, "Save Preset...");
+    menu.addItem (2001, "Show Presets Folder");
+
+    juce::Component::SafePointer<PresetSelector> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [safe, user] (int result) {
+        if (safe == nullptr || result <= 0)
+            return;
+
+        auto& pm = safe->processor.getPresetManager();
+        if (result < 1000)
+            pm.loadFactory (result - 1);
+        else if (result < 2000)
+            pm.loadFile (user[result - 1000]);
+        else if (result == 2000)
+            safe->askNameAndSave();
+        else if (result == 2001)
+        {
+            pm.getUserFolder().createDirectory();
+            pm.getUserFolder().revealToUser();
+        }
+        safe->refresh();
+    });
+}
+
+void PresetSelector::askNameAndSave()
+{
+    auto* window = new juce::AlertWindow ("Save Preset", "Name for the new preset:", juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor ("name", processor.getPresetManager().getCurrentName());
+    window->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<PresetSelector> safe (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window] (int result) {
+        if (safe == nullptr || result != 1)
+            return;
+
+        const auto outcome = safe->processor.getPresetManager().save (window->getTextEditorContents ("name"));
+        if (outcome.failed())
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save the preset",
+                                                    outcome.getErrorMessage());
+        safe->refresh();
+    }), true);
+}
+
 // ---------------------------------------------------------------------------------------------- top bar
 
 TopBar::TopBar (HarmEQAudioProcessor& p)
     : processor (p),
+      presetSelector (p),
       source (*p.getValueTreeState().getParameter (ParamIDs::source), { "Main", "Sidechain", "MIDI" }),
       notes (*p.getValueTreeState().getParameter (ParamIDs::midiMode), { "Last", "Lowest", "Poly" })
 {
+    addAndMakeVisible (presetSelector);
     addAndMakeVisible (source);
     addAndMakeVisible (notes);
+    source.setTooltip ("Where the pitch comes from: this track's audio, the sidechain input, or MIDI");
     notes.setTooltip ("MIDI notes: follow the last or lowest held note, or every note of a chord (Poly)");
 
     auto& apvts = p.getValueTreeState();
@@ -43,6 +150,8 @@ TopBar::TopBar (HarmEQAudioProcessor& p)
 
 void TopBar::refresh()
 {
+    presetSelector.refresh();
+
     const auto newPitch = processor.getDisplayPitch();
     const auto newConfidence = processor.getPitchConfidence();
     const auto newSource = static_cast<PitchSource> (
@@ -86,9 +195,9 @@ void TopBar::resized()
 {
     auto r = getLocalBounds().reduced (14, 0);
 
-    logoArea = r.removeFromLeft (76);
-    r.removeFromLeft (10);
-    sourceCaption = r.removeFromLeft (50);
+    logoArea = r.removeFromLeft (140);
+    presetSelector.setBounds (logoArea);
+    r.removeFromLeft (8);
     source.setBounds (r.removeFromLeft (196).withSizeKeepingCentre (196, 26));
     r.removeFromLeft (16);
     // The MIDI note mode and the detection settings share this space; only one shows at a time.
@@ -118,19 +227,6 @@ void TopBar::paint (juce::Graphics& g)
     g.setColour (theme::line);
     g.fillRect (getLocalBounds().removeFromBottom (1));
 
-    // Name
-    {
-        juce::Font f (juce::FontOptions ("Helvetica Neue", 19.0f, juce::Font::plain));
-        f.setExtraKerningFactor (0.06f);
-        g.setFont (f);
-        juce::AttributedString name;
-        name.append ("Harm", f, theme::text);
-        name.append ("EQ", f, theme::harmonic);
-        name.setJustification (juce::Justification::centredLeft);
-        name.draw (g, logoArea.toFloat());
-    }
-
-    drawCaption (g, "Source", sourceCaption);
     if (sourceMode == PitchSource::midi)
     {
         drawCaption (g, "Notes", notesCaption);
@@ -195,13 +291,13 @@ void TopBar::paint (juce::Graphics& g)
         int cents = 0;
         const auto note = theme::noteName (pitch.f0Hz, &cents);
         g.setColour (theme::muted);
-        g.drawText (theme::formatHz (pitch.f0Hz) + " Hz", r.removeFromRight (70), juce::Justification::centredRight, false);
+        g.drawText (theme::formatHz (pitch.f0Hz) + " Hz", r.removeFromRight (64), juce::Justification::centredRight, false);
         const juce::String minus (juce::CharPointer_UTF8 ("\xe2\x88\x92"));
-        g.drawText ((cents >= 0 ? "+" : minus) + juce::String (std::abs (cents)) + " ct", r.removeFromRight (56),
+        g.drawText ((cents >= 0 ? "+" : minus) + juce::String (std::abs (cents)) + " ct", r.removeFromRight (50),
                     juce::Justification::centredRight, false);
         g.setColour (theme::text);
         g.setFont (theme::numbers (19.0f));
-        g.drawText (note, r.removeFromRight (56), juce::Justification::centredRight, false);
+        g.drawText (note, r.removeFromRight (50), juce::Justification::centredRight, false);
     }
     else if (sourceMode == PitchSource::sidechain && ! sidechainConnected)
     {

@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "Presets.h"
 #include "dsp/EqEngine.h"
 #include "dsp/AnalyzerTap.h"
 #include "dsp/LatencyDelay.h"
@@ -20,7 +21,9 @@ public:
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using AudioProcessor::processBlock;
+    using AudioProcessor::processBlockBypassed;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -30,7 +33,8 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    // A high-Q band at a low frequency rings for up to about half a second after the input stops.
+    double getTailLengthSeconds() const override { return 0.5; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -42,6 +46,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
+    harmeq::PresetManager& getPresetManager() noexcept { return presets; }
 
     static BusesProperties createBusesProperties();
 
@@ -101,6 +106,7 @@ private:
     void applyOutputGain (juce::AudioBuffer<float>&);
 
     juce::AudioProcessorValueTreeState apvts;
+    harmeq::PresetManager presets { apvts };
 
     std::atomic<float>* sourceParam = nullptr;
     std::atomic<float>* midiModeParam = nullptr;

@@ -125,10 +125,15 @@ BandDesign BandDesign::make (const BandSettings& s, double f, double q, double g
 
 std::complex<double> BandDesign::response (double freqHz, double sampleRate) const
 {
-    auto h = coeffs[0].response (freqHz, sampleRate);
+    return responseFromWarped (std::tan (std::numbers::pi * freqHz / sampleRate));
+}
+
+std::complex<double> BandDesign::responseFromWarped (double warped) const
+{
+    auto h = coeffs[0].responseFromWarped (warped);
 
     if (numStages > 1)
-        h *= coeffs[1].response (freqHz, sampleRate);
+        h *= coeffs[1].responseFromWarped (warped);
 
     return (1.0 - wet) + (double) wet * h;
 }
